@@ -127,27 +127,12 @@ def submit_decision(workflow_id: str, thread_id: str, body: dict):
 
 @app.get("/api/workflows")
 def list_workflows():
-    return {
-        wf_id: {
-            "id":      cfg["id"],
-            "trigger": cfg.get("trigger", {}),
-            "steps":   [{"id": s["id"], "type": ("gate" if "gate" in s else "agent")}
-                        for s in cfg.get("steps", [])],
-        }
-        for wf_id, cfg in reg.workflows.items()
-    }
+    return reg.workflows
 
 
 @app.get("/api/agents")
 def list_agents():
-    return {
-        ag_id: {
-            "id":    cfg["id"],
-            "steps": [{"type": s["type"], "output": s.get("output_field")}
-                      for s in cfg.get("steps", [])],
-        }
-        for ag_id, cfg in reg.agents.items()
-    }
+    return reg.agents
 
 
 @app.get("/api/step-types")

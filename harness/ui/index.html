@@ -209,8 +209,13 @@ function toYaml(obj, indent=0) {
   if (typeof obj === 'boolean') return String(obj);
   if (typeof obj === 'number')  return String(obj);
   if (typeof obj === 'string') {
-    if (/[:{}\[\],#&*?|<>=!%@`]/.test(obj) || obj === 'true' || obj === 'false' || obj === 'null' || obj.includes('\n'))
-      return `"${obj.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')}"`;
+    if (obj.includes('\n')) {
+      // block scalar — much more readable for prompts
+      const lines = obj.split('\n').map(l => `${sp}  ${l}`).join('\n');
+      return `|\n${lines}`;
+    }
+    if (/[:{}\[\],#&*?|<>=!%@`]/.test(obj) || obj === 'true' || obj === 'false' || obj === 'null')
+      return `"${obj.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`;
     return obj;
   }
   if (Array.isArray(obj)) {
@@ -222,7 +227,6 @@ function toYaml(obj, indent=0) {
       return `${sp}- ${lines}`;
     }).join('\n');
   }
-  // object
   const entries = Object.entries(obj).filter(([,v]) => v !== undefined && v !== null && v !== '');
   return entries.map(([k,v]) => {
     if (typeof v === 'object') {
@@ -230,7 +234,10 @@ function toYaml(obj, indent=0) {
       if (child === '[]' || child === 'null') return `${sp}${k}: []`;
       return `${sp}${k}:\n${child}`;
     }
-    return `${sp}${k}: ${toYaml(v,0)}`;
+    const val = toYaml(v, indent);
+    // block scalar values get their own line
+    if (val.startsWith('|')) return `${sp}${k}: ${val}`;
+    return `${sp}${k}: ${val}`;
   }).join('\n');
 }
 
@@ -305,11 +312,18 @@ function renderMain() {
 // ── Editing state helpers ────────────────────────────────────────────────────
 function initEditing(type, id) {
   const src = type==='workflow' ? S.workflows[id] : S.agents[id];
-  _editing = { type, id, config: JSON.parse(JSON.stringify(src)) };
+  _editing = { type, id, config: JSON.parse(JSON.stringify(src)), serverYaml: null, dirty: false };
   _selectedStep = null;
+  // fetch the authoritative YAML from server in the background
+  const ep = type==='workflow' ? `/api/workflows/${id}/yaml` : `/api/agents/${id}/yaml`;
+  api('GET', ep).then(r => { if (_editing && _editing.id===id) _editing.serverYaml = r.content; renderMain(); }).catch(()=>{});
 }
 function ensureEditing(type, id) { if (!_editing || _editing.id!==id) initEditing(type, id); }
-function editingYaml() { return toYaml(_editing.config); }
+function editingYaml() {
+  // prefer server YAML (authoritative) until user makes local changes
+  if (!_editing.dirty && _editing.serverYaml) return _editing.serverYaml;
+  return toYaml(_editing.config);
+}
 
 // ── Tab bar ──────────────────────────────────────────────────────────────────
 function tabBar(type, id, extra='') {
@@ -539,6 +553,8 @@ function renderStepTypeDetail(main) {
 // ── Graph edit actions ────────────────────────────────────────────────────────
 function selectStep(id) { _selectedStep=id; renderMain(); }
 
+function markDirty() { if (_editing) _editing.dirty = true; }
+
 function addWorkflowStep(kind) {
   const steps=_editing.config.steps||(_editing.config.steps=[]);
   const idx=steps.length;
@@ -549,7 +565,7 @@ function addWorkflowStep(kind) {
     steps.push({id:`gate_${idx}`, gate:{output_field:`decision_${idx}`, options:['approved','rejected']}, routes:{}});
   }
   _selectedStep=steps[steps.length-1].id;
-  renderMain();
+  markDirty(); renderMain();
 }
 
 function addAgentStep() {
@@ -564,7 +580,7 @@ function addAgentStep() {
 function removeStep(stepId) {
   _editing.config.steps=(_editing.config.steps||[]).filter(s=>s.id!==stepId);
   _selectedStep=null;
-  renderMain();
+  markDirty(); renderMain();
 }
 
 function removeAgentStep(idx) {
@@ -581,48 +597,43 @@ function renameStep(oldId, newId) {
     if (s.routes) for (const k of Object.keys(s.routes)) if(s.routes[k]===oldId) s.routes[k]=newId;
     if (s.next===oldId) s.next=newId;
   });
-  step.id=newId; _selectedStep=newId; renderMain();
+  step.id=newId; _selectedStep=newId; markDirty(); renderMain();
 }
 
 function updateAgentStep(stepId, agentId) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
-  if (step) { step.agent=agentId; renderMain(); }
+  if (step) { step.agent=agentId; markDirty(); renderMain(); }
 }
-
 function updateNext(stepId, nextId) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
-  if (step) { step.next=nextId||undefined; renderMain(); }
+  if (step) { step.next=nextId||undefined; markDirty(); renderMain(); }
 }
-
 function updateGateField(stepId, field, value) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
-  if (step?.gate) { step.gate[field]=value; renderMain(); }
+  if (step?.gate) { step.gate[field]=value; markDirty(); renderMain(); }
 }
-
 function updateGateOptions(stepId, value) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
   if (!step?.gate) return;
   step.gate.options=value.split(',').map(s=>s.trim()).filter(Boolean);
-  renderMain();
+  markDirty(); renderMain();
 }
-
 function updateRoute(stepId, option, dest) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
   if (!step) return;
   if (!step.routes) step.routes={};
   if (dest) step.routes[option]=dest; else delete step.routes[option];
-  renderMain();
+  markDirty(); renderMain();
 }
-
 function updateAgentStepField(idx, field, value) {
   const steps=_editing.config.steps||[];
-  if (steps[idx]) { steps[idx][field]=value; renderMain(); }
+  if (steps[idx]) { steps[idx][field]=value; markDirty(); renderMain(); }
 }
 
 // ── YAML ↔ editing state ──────────────────────────────────────────────────────
 function onYamlEdit(value) {
-  // store raw edits; parse on save
   _editing._rawYaml = value;
+  _editing.dirty = true;
 }
 
 function copyYaml() {
