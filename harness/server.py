@@ -200,6 +200,14 @@ def agent_yaml(agent_id: str):
 
 # ── Propose as PR ────────────────────────────────────────────────────────────
 
+@app.get("/api/branches")
+def list_branches():
+    data = _gh("GET", "/branches?per_page=50")
+    if not data:
+        return []
+    return [b["name"] for b in data]
+
+
 @app.post("/api/propose")
 def propose(body: dict):
     entity_type = body.get("type")   # "workflow" or "agent"
@@ -213,18 +221,19 @@ def propose(body: dict):
     subdir    = "workflows" if entity_type == "workflow" else "agents"
     file_path = f"harness/config/{subdir}/{entity_id}.yaml"
     branch    = f"harness/{entity_type}/{entity_id}-{int(time.time())}"
+    base      = body.get("base_branch") or GITHUB_BASE_BRANCH
 
     # 1. Get base branch SHA
-    ref = _gh("GET", f"/git/ref/heads/{GITHUB_BASE_BRANCH}")
+    ref = _gh("GET", f"/git/ref/heads/{base}")
     if not ref:
-        raise HTTPException(status_code=404, detail=f"Base branch '{GITHUB_BASE_BRANCH}' not found")
+        raise HTTPException(status_code=404, detail=f"Base branch '{base}' not found")
     base_sha = ref["object"]["sha"]
 
     # 2. Create branch
     _gh("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": base_sha})
 
     # 3. Get existing file SHA (required by GitHub API to update an existing file)
-    existing = _gh("GET", f"/contents/{file_path}?ref={GITHUB_BASE_BRANCH}")
+    existing = _gh("GET", f"/contents/{file_path}?ref={base}")
     file_sha = existing["sha"] if existing else None
 
     # 4. Commit the YAML file
@@ -247,7 +256,7 @@ def propose(body: dict):
             f"---\n{description}"
         ),
         "head": branch,
-        "base": GITHUB_BASE_BRANCH,
+        "base": base,
     })
 
     return {"pr_url": pr["html_url"], "branch": branch}
