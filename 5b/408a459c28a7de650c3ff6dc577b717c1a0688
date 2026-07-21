@@ -1,0 +1,26 @@
+agent/langgraph_app/nodes/assess_finding.py
+  s_8c4312024059e4::t_ef2f97910de89f 4,34-40,43
+  s_8c4312024059e4::t_785585025ef9d9 3
+k8s/agent-deployment.yaml
+  s_8c4312024059e4::t_2d9a9d5bb21e44 24-30
+agent/langgraph_app/runner.py
+  s_8c4312024059e4::t_4e9ca796ea9a62 12-14
+agent/requirements.txt
+  s_8c4312024059e4::t_037250f88a354c 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5b408a459c28a7de650c3ff6dc577b717c1a0688",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
