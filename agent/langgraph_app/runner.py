@@ -9,8 +9,9 @@ from stdin. The runner uses LangGraph's interrupt_before + update_state pattern:
 
 Usage:
     cd agent/langgraph_app
-    ANTHROPIC_API_KEY=sk-... python runner.py              # built-in sample CVE
-    ANTHROPIC_API_KEY=sk-... python runner.py cve.json     # custom ticket
+    ANTHROPIC_API_KEY=sk-ant-... python runner.py                        # Anthropic (default)
+    LITELLM_MODEL=gemini/gemini-1.5-flash GEMINI_API_KEY=... python runner.py  # Gemini
+    LITELLM_MODEL=groq/llama-3.1-70b-versatile GROQ_API_KEY=... python runner.py  # Groq
 """
 import json
 import sys

@@ -1,6 +1,7 @@
 import json
 import os
-import urllib.request
+
+import litellm
 
 
 def assess_finding(state):
@@ -30,26 +31,16 @@ Rules:
 - Escalate only if evidence is genuinely conflicting or suggests active exploitation
 - Return only the JSON object, nothing else."""
 
-    model = os.getenv("OLLAMA_MODEL", "llama3.2")
-    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    print(f"[assess_finding] Calling {model} via Ollama...")
+    model = os.getenv("LITELLM_MODEL", "anthropic/claude-haiku-4-5-20251001")
+    print(f"[assess_finding] Calling {model} via LiteLLM...")
 
-    payload = json.dumps({
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-    }).encode()
-
-    req = urllib.request.Request(
-        f"{host}/api/generate",
-        data=payload,
-        headers={"Content-Type": "application/json"},
+    response = litellm.completion(
+        model=model,
+        max_tokens=512,
+        messages=[{"role": "user", "content": prompt}],
     )
-    with urllib.request.urlopen(req) as resp:
-        result = json.loads(resp.read())
 
-    assessment = json.loads(result["response"])
+    assessment = json.loads(response.choices[0].message.content)
     print(
         f"[assess_finding] Affected: {assessment['affected']} | "
         f"Risk: {assessment['risk_level']} | "

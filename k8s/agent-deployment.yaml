@@ -21,10 +21,13 @@ spec:
           ports:
             - containerPort: 8000
           env:
-            - name: OLLAMA_HOST
-              value: "http://host.docker.internal:11434"
-            - name: OLLAMA_MODEL
-              value: "llama3.2"
+            - name: LITELLM_MODEL
+              value: "anthropic/claude-haiku-4-5-20251001"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-credentials
+                  key: ANTHROPIC_API_KEY
 ---
 apiVersion: v1
 kind: Service
