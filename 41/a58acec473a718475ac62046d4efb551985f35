@@ -1,0 +1,26 @@
+harness/server.py
+  s_8c4312024059e4::t_e6e3d68bee8dbd 253-333
+  s_8c4312024059e4::t_d1a028d1b5e803 6-7,10,17
+k8s/harness-deployment.yaml
+  s_8c4312024059e4::t_e3301870906eff 40-45
+harness/ui/index.html
+  s_8c4312024059e4::t_60ff3fa2b9c33b 389
+  s_8c4312024059e4::t_ffb390289adc3d 394,396-407,410-412,414-418,420-422,424,426,431-432,435-438,443-444,447-448
+  s_8c4312024059e4::t_2eb27391ecfbab 69-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "41a58acec473a718475ac62046d4efb551985f35",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
