@@ -1,24 +1,21 @@
-"""
-Stub for: "reading the advisory, the dependency graph, and our code
-to work out whether the product is affected."
-
-Today this just reshapes the input ticket into an evidence blob.
-Later: pull the real advisory text, real lockfile/dependency graph,
-and real code references here.
-"""
-
-
 def gather_evidence(state):
     advisory = state["advisory"]
     dependencies = state["dependencies"]
     package = advisory.get("package")
+    our_version = dependencies.get(package)
+    affected = advisory.get("affected_versions", [])
 
     evidence = {
         "advisory_id": advisory.get("id"),
         "advisory_summary": advisory.get("summary"),
         "affected_package": package,
-        "affected_versions": advisory.get("affected_versions", []),
-        "our_locked_version": dependencies.get(package),
+        "affected_versions": affected,
+        "our_locked_version": our_version,
+        "dependency_file_context": f"requirements.txt: {package}=={our_version}",
+        "is_affected": our_version in affected,
+        "all_dependencies": dependencies,
     }
 
+    print(f"[gather_evidence] {package}@{our_version} | affected versions: {affected}")
+    print(f"[gather_evidence] Is affected: {evidence['is_affected']}")
     return {"evidence": evidence}

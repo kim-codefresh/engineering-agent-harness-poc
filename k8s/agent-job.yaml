@@ -14,6 +14,11 @@ spec:
           image: agent-harness-poc:local
           imagePullPolicy: IfNotPresent
           args: ["/data/sample_cve.json"]
+          env:
+            - name: OLLAMA_HOST
+              value: "http://host.docker.internal:11434"
+            - name: OLLAMA_MODEL
+              value: "llama3.2"
           volumeMounts:
             - name: cve-input
               mountPath: /data
