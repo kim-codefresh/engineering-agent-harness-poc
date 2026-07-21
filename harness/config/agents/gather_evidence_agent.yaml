@@ -1,0 +1,4 @@
+id: gather_evidence_agent
+steps:
+  - type: gather_evidence
+    output_field: evidence

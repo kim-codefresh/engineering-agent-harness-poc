@@ -1,0 +1,20 @@
+id: fix_preparer
+steps:
+  - type: call_llm
+    output_field: fix
+    max_tokens: 256
+    prompt: |
+      Prepare a minimal fix for {advisory_id}.
+      Package: {affected_package}, bump from {our_locked_version} to latest safe version.
+
+      Return JSON only:
+      {{
+        "package": "{affected_package}",
+        "old_version": "{our_locked_version}",
+        "new_version": "<safe version>",
+        "diff_summary": "-package==old\n+package==new",
+        "commit_message": "fix: bump package (CVE-id)"
+      }}
+
+  - type: run_tests
+    output_field: validation

@@ -1,0 +1,4 @@
+id: outcome_recorder
+steps:
+  - type: record_outcome
+    output_field: outcome

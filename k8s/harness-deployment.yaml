@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-harness
+  namespace: agent-harness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-harness
+  template:
+    metadata:
+      labels:
+        app: agent-harness
+    spec:
+      serviceAccountName: harness-runner
+      containers:
+        - name: harness
+          image: agent-harness:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: LITELLM_MODEL
+              value: "anthropic/claude-haiku-4-5-20251001"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-credentials
+                  key: ANTHROPIC_API_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-harness
+  namespace: agent-harness
+spec:
+  selector:
+    app: agent-harness
+  ports:
+    - port: 8000
+      targetPort: 8000

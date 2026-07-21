@@ -1,0 +1,51 @@
+id: cve_remediation
+trigger:
+  source: linear
+  event: cve.created
+
+steps:
+  - id: gather
+    agent: gather_evidence_agent
+    next: assess
+
+  - id: assess
+    agent: cve_assessor
+    next: security_gate
+
+  - id: security_gate
+    gate:
+      output_field: disposition
+      options: [no_fix_needed, fix_authorized, escalate]
+    routes:
+      no_fix_needed: record
+      escalate:      record
+      fix_authorized: scope_gate
+
+  - id: scope_gate
+    gate:
+      output_field: scope_authorized
+      options: [authorized, rejected]
+    routes:
+      rejected:  record
+      authorized: prepare
+
+  - id: prepare
+    agent: fix_preparer
+    next: open_pr
+
+  - id: open_pr
+    agent: pr_opener
+    next: pr_gate
+
+  - id: pr_gate
+    gate:
+      output_field: pr_decision
+      options: [approved, changes_requested]
+    routes:
+      changes_requested: record
+      approved:          record
+
+  - id: record
+    agent: outcome_recorder
+
+terminal_step: record
