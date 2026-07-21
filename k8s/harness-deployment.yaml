@@ -37,6 +37,12 @@ spec:
               value: "kim-codefresh/engineering-agent-harness-poc"
             - name: GITHUB_BASE_BRANCH
               value: "feat/full-cve-flow-human-gates-lift-and-shift"
+            - name: LINEAR_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: linear-credentials
+                  key: LINEAR_WEBHOOK_SECRET
+                  optional: true
 ---
 apiVersion: v1
 kind: Service

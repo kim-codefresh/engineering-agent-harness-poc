@@ -3,15 +3,18 @@ Harness server — generic, knows nothing about specific workflows.
 Serves both the REST API and the management UI.
 """
 import base64
+import hashlib
+import hmac
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -245,6 +248,87 @@ def propose(body: dict):
     })
 
     return {"pr_url": pr["html_url"], "branch": branch}
+
+
+# ── Linear webhook ───────────────────────────────────────────────────────────
+
+@app.post("/webhook/linear")
+async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
+    body = await request.body()
+
+    secret = os.getenv("LINEAR_WEBHOOK_SECRET", "")
+    if secret:
+        sig      = request.headers.get("linear-signature", "")
+        expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+    payload = json.loads(body)
+
+    if payload.get("type") != "Issue":
+        return {"status": "ignored", "reason": "not an Issue event"}
+
+    issue        = payload.get("data", {})
+    labels       = issue.get("labels", [])
+    label_names  = [l.get("name", "") for l in labels]
+
+    if "kim-test-harness" not in label_names:
+        return {"status": "ignored", "reason": "label 'kim-test-harness' not present"}
+
+    prev_label_ids = set((payload.get("updatedFrom") or {}).get("labelIds", []))
+    trigger_label  = next((l for l in labels if l.get("name") == "kim-test-harness"), {})
+    if trigger_label.get("id") in prev_label_ids:
+        return {"status": "ignored", "reason": "label was already applied"}
+
+    title       = issue.get("title", "")
+    description = issue.get("description", "") or ""
+    issue_id    = issue.get("id", "unknown")
+
+    cve_match = re.search(r'CVE-\d{4}-\d+', title + " " + description, re.IGNORECASE)
+    cve_id    = cve_match.group(0).upper() if cve_match else f"LINEAR-{issue_id[:8].upper()}"
+
+    pkg_match = re.search(r'[Pp]ackage[:\s]+([a-zA-Z0-9_\-]+)', description)
+    ver_match = re.search(r'[Vv]ersion[:\s]+([\d.]+)', description)
+    package   = pkg_match.group(1) if pkg_match else "unknown-package"
+    version   = ver_match.group(1) if ver_match else "0.0.0"
+
+    thread_id = f"cve_remediation-{issue_id[:8]}-{int(time.time())}"
+    ticket = {
+        "cve_id":      cve_id,
+        "advisory": {
+            "id":                cve_id,
+            "summary":           title,
+            "package":           package,
+            "affected_versions": [version],
+        },
+        "dependencies": {package: version},
+        "linear_issue": {"id": issue_id, "url": issue.get("url", "")},
+    }
+
+    background_tasks.add_task(_start_workflow, "cve_remediation", thread_id, ticket)
+    return {"status": "accepted", "thread_id": thread_id, "cve_id": cve_id}
+
+
+def _start_workflow(workflow_id: str, thread_id: str, ticket: dict):
+    try:
+        graph = reg.graph(workflow_id)
+        graph.invoke(ticket, {"configurable": {"thread_id": thread_id}})
+    except Exception as e:
+        print(f"[webhook] workflow error: {e}")
+
+
+@app.get("/api/runs")
+def list_runs():
+    runs = {}
+    try:
+        for key, state in reg.checkpointer.storage.items():
+            if not state:
+                continue
+            tid = key[1][1] if len(key) > 1 and len(key[1]) > 1 else str(key)
+            runs[tid] = {"thread_id": tid}
+    except Exception:
+        pass
+    return runs
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────

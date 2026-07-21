@@ -66,7 +66,8 @@ body{font-family:var(--sans);background:var(--ground);color:var(--text);font-siz
 .graph-wrap{position:relative;overflow-x:auto;padding:8px 0}
 svg.igraph{display:block;margin:0 auto}
 .graph-toolbar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
-.node-editor{background:var(--ground);border-top:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px}
+.node-editor{background:var(--ground);border-top:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:12px;border-radius:0 0 8px 8px}
+.node-editor.has-selection{border-left:3px solid var(--accent)}
 .node-editor-title{font-size:11px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;justify-content:space-between}
 .ne-grid{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;align-items:center;font-size:13px}
 .ne-label{color:var(--text-dim)}
@@ -385,50 +386,66 @@ function renderGraphTab() {
       <button class="btn-sm accent" onclick="saveEditing()">Save changes</button>
     </div>
     <div class="graph-wrap">${svg}</div>
-    <div class="node-editor" id="node-editor">${editor}</div>`;
+    <div class="node-editor${_selectedStep?' has-selection':''}" id="node-editor">${editor}</div>`;
 }
 
 function buildWorkflowSvg(steps) {
   if (!steps.length) return `<div style="padding:32px;text-align:center;color:var(--text-dim);font-size:13px;">No steps yet. Add one above.</div>`;
-  const W=560, nodeW=160, nodeH=38, gateH=38, gap=50;
-  const totalH = steps.length*(nodeH+gap)+32;
+  const W=620, nodeW=180, nodeH=38, gateH=38, routeLabelH=16, gap=60;
   const cx=W/2;
+
+  // pre-calc y positions — gates with routes need extra vertical space for labels below
+  const positions=[];
+  let y=16;
+  steps.forEach(step=>{
+    const isGate='gate' in step;
+    const routeCount=isGate&&step.routes?Object.keys(step.routes).length:0;
+    positions.push({y, isGate, routeCount});
+    y += (isGate?gateH:nodeH) + (routeCount>0?routeLabelH*routeCount+8:0) + gap;
+  });
+  const totalH=y+8;
+
   let html=`<defs><marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
     <polygon points="0 0,8 3,0 6" fill="#CBD5E1"/></marker></defs>`;
-  steps.forEach((step,i) => {
-    const y=16+i*(nodeH+gap), x=cx-nodeW/2;
-    const isGate='gate' in step;
+
+  steps.forEach((step,i)=>{
+    const {y:sy, isGate}=positions[i];
     const selected=_selectedStep===step.id;
+    const selStroke=selected?'#6366F1':(isGate?'#F59E0B':'#6366F1');
+    const selFill=selected?(isGate?'#FEF3C7':'#E0E7FF'):(isGate?'#FFFBEB':'#EEF2FF');
+    const textCol=isGate?'#92400E':'#4338CA';
+
+    // connector from previous
     if (i>0) {
-      const prevY=16+(i-1)*(nodeH+gap)+nodeH;
-      html+=`<line x1="${cx}" y1="${prevY}" x2="${cx}" y2="${y}" stroke="#CBD5E1" stroke-width="1.5" marker-end="url(#arr)"/>`;
+      const prev=positions[i-1];
+      const prevBottom=prev.y+(prev.isGate?gateH:nodeH)+(prev.routeCount>0?routeLabelH*prev.routeCount+8:0);
+      html+=`<line x1="${cx}" y1="${prevBottom}" x2="${cx}" y2="${sy}" stroke="#CBD5E1" stroke-width="1.5" marker-end="url(#arr)"/>`;
     }
-    const selStroke = selected ? '#6366F1' : (isGate?'#F59E0B':'#6366F1');
-    const selFill   = selected ? (isGate?'#FEF3C7':'#E0E7FF') : (isGate?'#FFFBEB':'#EEF2FF');
-    const textCol   = isGate ? '#92400E' : '#4338CA';
+
     if (isGate) {
-      const hw=nodeW/2, hh=gateH/2, mx=cx, my=y+hh;
+      const hw=nodeW/2, hh=gateH/2, mx=cx, my=sy+hh;
       html+=`<polygon points="${mx},${my-hh} ${mx+hw},${my} ${mx},${my+hh} ${mx-hw},${my}"
         fill="${selFill}" stroke="${selStroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
         onclick="selectStep('${step.id}')"/>
         <text x="${cx}" y="${my+4}" text-anchor="middle" font-size="11" fill="${textCol}"
-          font-family="Menlo,monospace" font-weight="600" style="pointer-events:none">⬟ ${step.id}</text>`;
-      // route labels
+          font-family="monospace" font-weight="600" style="pointer-events:none">[G] ${step.id}</text>`;
+      // route labels stacked BELOW the diamond
       if (step.routes) {
         let ri=0;
-        for (const [opt] of Object.entries(step.routes)) {
-          const lx=ri%2===0?cx-nodeW/2-6:cx+nodeW/2+6;
-          const anchor=ri%2===0?'end':'start';
-          html+=`<text x="${lx}" y="${my+4}" text-anchor="${anchor}" font-size="10" fill="#94A3B8" font-family="Menlo,monospace">${opt}</text>`;
+        for (const [opt, dest] of Object.entries(step.routes)) {
+          const ly=sy+gateH+10+ri*routeLabelH;
+          html+=`<text x="${cx}" y="${ly}" text-anchor="middle" font-size="10" fill="#94A3B8"
+            font-family="monospace">${opt} → ${dest||'?'}</text>`;
           ri++;
         }
       }
     } else {
-      html+=`<rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="6"
+      const x=cx-nodeW/2;
+      html+=`<rect x="${x}" y="${sy}" width="${nodeW}" height="${nodeH}" rx="6"
         fill="${selFill}" stroke="${selStroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
         onclick="selectStep('${step.id}')"/>
-        <text x="${cx}" y="${y+nodeH/2+4}" text-anchor="middle" font-size="11" fill="${textCol}"
-          font-family="Menlo,monospace" font-weight="600" style="pointer-events:none">◈ ${step.id}</text>`;
+        <text x="${cx}" y="${sy+nodeH/2+4}" text-anchor="middle" font-size="11" fill="${textCol}"
+          font-family="monospace" font-weight="600" style="pointer-events:none">[A] ${step.id}</text>`;
     }
   });
   return `<svg class="igraph" width="${W}" height="${totalH}" viewBox="0 0 ${W} ${totalH}">${html}</svg>`;
