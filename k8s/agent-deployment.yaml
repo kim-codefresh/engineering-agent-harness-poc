@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cve-harness
+  namespace: agent-harness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cve-harness
+  template:
+    metadata:
+      labels:
+        app: cve-harness
+    spec:
+      serviceAccountName: harness-runner
+      containers:
+        - name: harness
+          image: agent-harness-poc:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OLLAMA_HOST
+              value: "http://host.docker.internal:11434"
+            - name: OLLAMA_MODEL
+              value: "llama3.2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cve-harness
+  namespace: agent-harness
+spec:
+  selector:
+    app: cve-harness
+  ports:
+    - port: 8000
+      targetPort: 8000

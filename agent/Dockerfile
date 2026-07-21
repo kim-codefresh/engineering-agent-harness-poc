@@ -6,5 +6,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY langgraph_app/ .
 
-ENTRYPOINT ["python", "graph.py"]
-CMD ["/data/sample_cve.json"]
+ENTRYPOINT ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
