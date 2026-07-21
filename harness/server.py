@@ -2,12 +2,49 @@
 Harness server — generic, knows nothing about specific workflows.
 Serves both the REST API and the management UI.
 """
+import base64
+import json
+import os
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
+
+import yaml
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from step_types import REGISTRY as STEP_REGISTRY
+from fastapi.staticfiles import StaticFiles
+
 from registry import Registry
+from step_types import REGISTRY as STEP_REGISTRY
+
+CONFIG_DIR = Path(__file__).parent / "config"
+GITHUB_REPO        = os.getenv("GITHUB_REPO", "kim-codefresh/engineering-agent-harness-poc")
+GITHUB_BASE_BRANCH = os.getenv("GITHUB_BASE_BRANCH", "feat/full-cve-flow-human-gates-lift-and-shift")
+
+
+def _gh(method: str, path: str, body: dict = None):
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        raise HTTPException(status_code=503, detail="GITHUB_TOKEN not configured")
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{GITHUB_REPO}{path}",
+        method=method,
+        headers={
+            "Authorization": f"token {token}",
+            "Accept":        "application/vnd.github.v3+json",
+            "Content-Type":  "application/json",
+            "User-Agent":    "agent-harness",
+        },
+        data=json.dumps(body).encode() if body else None,
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise HTTPException(status_code=e.code, detail=e.read().decode())
 
 app = FastAPI(title="Engineering Agent Harness")
 reg = Registry()
@@ -138,6 +175,82 @@ def create_agent(agent: dict):
 def reload():
     reg.reload()
     return {"reloaded": True, "workflows": list(reg.workflows), "agents": list(reg.agents)}
+
+
+# ── Config YAML ─────────────────────────────────────────────────────────────
+
+def _read_yaml(subdir: str, entity_id: str) -> str:
+    path = CONFIG_DIR / subdir / f"{entity_id}.yaml"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{entity_id} not found")
+    return path.read_text()
+
+
+@app.get("/api/workflows/{workflow_id}/yaml")
+def workflow_yaml(workflow_id: str):
+    content = _read_yaml("workflows", workflow_id)
+    return {"id": workflow_id, "path": f"harness/config/workflows/{workflow_id}.yaml", "content": content}
+
+
+@app.get("/api/agents/{agent_id}/yaml")
+def agent_yaml(agent_id: str):
+    content = _read_yaml("agents", agent_id)
+    return {"id": agent_id, "path": f"harness/config/agents/{agent_id}.yaml", "content": content}
+
+
+# ── Propose as PR ────────────────────────────────────────────────────────────
+
+@app.post("/api/propose")
+def propose(body: dict):
+    entity_type = body.get("type")   # "workflow" or "agent"
+    entity_id   = body.get("id")
+    content     = body.get("content")
+    description = body.get("description") or f"Update {entity_type} {entity_id}"
+
+    if not all([entity_type, entity_id, content]):
+        raise HTTPException(status_code=400, detail="type, id, and content are required")
+
+    subdir    = "workflows" if entity_type == "workflow" else "agents"
+    file_path = f"harness/config/{subdir}/{entity_id}.yaml"
+    branch    = f"harness/{entity_type}/{entity_id}-{int(time.time())}"
+
+    # 1. Get base branch SHA
+    ref = _gh("GET", f"/git/ref/heads/{GITHUB_BASE_BRANCH}")
+    if not ref:
+        raise HTTPException(status_code=404, detail=f"Base branch '{GITHUB_BASE_BRANCH}' not found")
+    base_sha = ref["object"]["sha"]
+
+    # 2. Create branch
+    _gh("POST", "/git/refs", {"ref": f"refs/heads/{branch}", "sha": base_sha})
+
+    # 3. Get existing file SHA (required by GitHub API to update an existing file)
+    existing = _gh("GET", f"/contents/{file_path}?ref={GITHUB_BASE_BRANCH}")
+    file_sha = existing["sha"] if existing else None
+
+    # 4. Commit the YAML file
+    commit_body = {
+        "message": f"harness: {description}",
+        "content": base64.b64encode(content.encode()).decode(),
+        "branch":  branch,
+    }
+    if file_sha:
+        commit_body["sha"] = file_sha
+    _gh("PUT", f"/contents/{file_path}", commit_body)
+
+    # 5. Open the PR
+    pr = _gh("POST", "/pulls", {
+        "title": f"harness: {description}",
+        "body":  (
+            f"Created from the Agent Harness UI\n\n"
+            f"**Entity:** `{entity_type}/{entity_id}`\n"
+            f"**File:** `{file_path}`\n\n"
+            f"---\n{description}"
+        ),
+        "head": branch,
+        "base": GITHUB_BASE_BRANCH,
+    })
+
+    return {"pr_url": pr["html_url"], "branch": branch}
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────

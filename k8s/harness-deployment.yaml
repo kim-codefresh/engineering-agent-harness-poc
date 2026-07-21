@@ -28,6 +28,15 @@ spec:
                 secretKeyRef:
                   name: llm-credentials
                   key: ANTHROPIC_API_KEY
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-credentials
+                  key: GITHUB_TOKEN
+            - name: GITHUB_REPO
+              value: "kim-codefresh/engineering-agent-harness-poc"
+            - name: GITHUB_BASE_BRANCH
+              value: "feat/full-cve-flow-human-gates-lift-and-shift"
 ---
 apiVersion: v1
 kind: Service

@@ -123,6 +123,27 @@ svg.diagram { display:block; }
 .topbar-status strong { color:var(--ok); }
 .topbar-right { margin-left:auto; display:flex; gap:8px; }
 
+/* ── YAML panel ────────────────────────────────── */
+.yaml-panel { font-family:var(--mono); font-size:12px; line-height:1.6; background:var(--ground); border:1px solid var(--border); border-radius:6px; padding:14px 16px; white-space:pre; overflow-x:auto; color:var(--text); max-height:320px; overflow-y:auto; }
+.yaml-textarea { font-family:var(--mono); font-size:12px; line-height:1.6; background:var(--surface); border:1px solid var(--accent); border-radius:6px; padding:14px 16px; color:var(--text); width:100%; min-height:220px; resize:vertical; outline:none; }
+.yaml-toolbar { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.yaml-path { font-family:var(--mono); font-size:11px; color:var(--text-dim); flex:1; }
+.btn-sm { padding:5px 12px; font-size:12px; border-radius:5px; cursor:pointer; border:1px solid var(--border-2); background:var(--surface); color:var(--text-mid); transition:all .15s; }
+.btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+.btn-sm.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+/* ── PR modal ───────────────────────────────────── */
+#pr-modal { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:200; }
+#pr-modal.open { display:flex; }
+.modal-box { background:var(--surface); border-radius:12px; box-shadow:var(--shadow-lg); width:480px; max-width:90vw; overflow:hidden; }
+.modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal-title { font-size:14px; font-weight:600; }
+.modal-close { background:none; border:none; font-size:20px; color:var(--text-dim); cursor:pointer; line-height:1; }
+.modal-body { padding:20px; display:flex; flex-direction:column; gap:14px; }
+.modal-footer { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px; }
+.pr-result { background:var(--ok-bg); border:1px solid rgba(16,185,129,.3); border-radius:6px; padding:12px 14px; font-size:13px; color:var(--ok); }
+.pr-result a { color:var(--accent); text-decoration:underline; }
+
 /* ── Toast ─────────────────────────────────────── */
 #toast { position:fixed; bottom:24px; right:24px; background:var(--text); color:#fff; padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s; z-index:100; }
 #toast.show { opacity:1; }
@@ -161,6 +182,31 @@ svg.diagram { display:block; }
 </div>
 
 <div id="toast"></div>
+
+<div id="pr-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Propose change as PR</span>
+      <button class="modal-close" onclick="closePrModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>PR description</label>
+        <input id="pr-desc" placeholder="e.g. Add scope check to CVE assessment gate" />
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);">
+        This will create a branch on GitHub, commit the YAML, and open a PR against
+        <code style="font-family:var(--mono);color:var(--text-mid)">feat/full-cve-flow-human-gates-lift-and-shift</code>.
+        ArgoCD will sync it automatically once merged.
+      </div>
+      <div id="pr-result" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePrModal()">Cancel</button>
+      <button class="btn btn-primary" id="pr-submit-btn" onclick="submitPr()">Create PR</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
@@ -298,6 +344,8 @@ function renderWorkflowDetail(main, wf) {
       </div>
     </div>`;
   drawDiagram('wf-diagram', steps);
+  // append YAML panel without overwriting innerHTML
+  main.insertAdjacentHTML('beforeend', yamlCard('workflow', wf.id));
 }
 
 // ── SVG diagram ──────────────────────────────────────────────────────────────
@@ -379,6 +427,7 @@ function renderAgentDetail(main, ag) {
         </div>
       </div>
     </div>`;
+  main.insertAdjacentHTML('beforeend', yamlCard('agent', ag.id));
 }
 
 // ── Step type detail ──────────────────────────────────────────────────────────
@@ -641,6 +690,115 @@ async function saveWorkflow() {
     S.view = 'workflows'; S.selected = id;
     render(); toast(`Workflow '${id}' saved`);
   } catch(e) { toast(e.message, false); }
+}
+
+// ── YAML panel ───────────────────────────────────────────────────────────────
+let _yamlState = { editing: false, content: '', path: '', type: '', id: '' };
+
+async function loadYaml(type, id) {
+  const endpoint = type === 'workflow' ? `/api/workflows/${id}/yaml` : `/api/agents/${id}/yaml`;
+  try {
+    const r = await api('GET', endpoint);
+    _yamlState = { editing: false, content: r.content, path: r.path, type, id };
+    renderYamlPanel();
+  } catch(e) { toast(e.message, false); }
+}
+
+function renderYamlPanel() {
+  const wrap = document.getElementById('yaml-panel-wrap');
+  if (!wrap) return;
+  const { editing, content, path } = _yamlState;
+  wrap.innerHTML = `
+    <div class="yaml-toolbar">
+      <span class="yaml-path">${path}</span>
+      <button class="btn-sm" onclick="copyYaml()" title="Copy">⎘ Copy</button>
+      <button class="btn-sm ${editing ? 'active' : ''}" onclick="toggleEdit()">
+        ${editing ? '✕ Cancel edit' : '✏ Edit'}
+      </button>
+      <button class="btn-sm active" onclick="openPrModal()" style="background:var(--accent);color:#fff;border-color:var(--accent);">
+        ↗ Propose as PR
+      </button>
+    </div>
+    ${editing
+      ? `<textarea class="yaml-textarea" id="yaml-edit" onchange="_yamlState.content=this.value" oninput="_yamlState.content=this.value">${content}</textarea>`
+      : `<pre class="yaml-panel">${escHtml(content)}</pre>`
+    }`;
+}
+
+function toggleEdit() {
+  _yamlState.editing = !_yamlState.editing;
+  renderYamlPanel();
+}
+
+function copyYaml() {
+  navigator.clipboard.writeText(_yamlState.content).then(() => toast('Copied'));
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function yamlCard(type, id) {
+  return `
+    <div class="card" style="margin-top:0">
+      <div class="card-header">
+        <span class="card-title">⟨/⟩ Config YAML</span>
+        <button class="btn-sm" onclick="loadYaml('${type}','${id}')">Load</button>
+      </div>
+      <div class="card-body">
+        <div id="yaml-panel-wrap">
+          <div style="font-size:12px;color:var(--text-dim);">
+            Click <strong>Load</strong> to view the raw YAML config for this ${type}.
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── PR modal ──────────────────────────────────────────────────────────────────
+function openPrModal() {
+  document.getElementById('pr-desc').value = `Update ${_yamlState.type} ${_yamlState.id}`;
+  document.getElementById('pr-result').style.display = 'none';
+  document.getElementById('pr-submit-btn').style.display = 'inline-flex';
+  document.getElementById('pr-modal').classList.add('open');
+}
+
+function closePrModal() {
+  document.getElementById('pr-modal').classList.remove('open');
+}
+
+async function submitPr() {
+  const desc = document.getElementById('pr-desc').value.trim();
+  const content = document.getElementById('yaml-edit')?.value || _yamlState.content;
+
+  document.getElementById('pr-submit-btn').textContent = 'Creating…';
+  document.getElementById('pr-submit-btn').disabled = true;
+
+  try {
+    const r = await api('POST', '/api/propose', {
+      type:        _yamlState.type,
+      id:          _yamlState.id,
+      content,
+      description: desc,
+    });
+    const resultEl = document.getElementById('pr-result');
+    resultEl.style.display = 'block';
+    resultEl.className = 'pr-result';
+    resultEl.innerHTML = `✅ PR created — <a href="${r.pr_url}" target="_blank">${r.pr_url}</a><br/>
+      <span style="font-size:11px;color:var(--text-dim);">Branch: ${r.branch}</span>`;
+    document.getElementById('pr-submit-btn').style.display = 'none';
+    toast('PR created');
+  } catch(e) {
+    const resultEl = document.getElementById('pr-result');
+    resultEl.style.display = 'block';
+    resultEl.className = 'pr-result';
+    resultEl.style.background = '#FEF2F2';
+    resultEl.style.borderColor = 'rgba(239,68,68,.3)';
+    resultEl.style.color = 'var(--danger)';
+    resultEl.textContent = `Error: ${e.message}`;
+    document.getElementById('pr-submit-btn').textContent = 'Create PR';
+    document.getElementById('pr-submit-btn').disabled = false;
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
