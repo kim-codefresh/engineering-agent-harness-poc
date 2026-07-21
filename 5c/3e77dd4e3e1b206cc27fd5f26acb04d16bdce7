@@ -1,0 +1,25 @@
+agent/Dockerfile
+  s_8c4312024059e4::t_a5aa9d7c8c1bd2 9
+k8s/agent-deployment.yaml
+  s_8c4312024059e4::t_d5b974cd90cd19 1-39
+agent/langgraph_app/server.py
+  s_8c4312024059e4::t_b77e6bff946f71 1-122
+agent/requirements.txt
+  s_8c4312024059e4::t_c61572b2ed8d4f 2-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5c3e77dd4e3e1b206cc27fd5f26acb04d16bdce7",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
