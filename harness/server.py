@@ -30,6 +30,15 @@ def _gh(method: str, path: str, body: dict = None):
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         raise HTTPException(status_code=503, detail="GITHUB_TOKEN not configured")
+    # Safety gate — write operations only permitted on kim-codefresh repos
+    if method in ("POST", "PUT", "PATCH", "DELETE"):
+        repo = os.getenv("GITHUB_REPO", "")
+        if not repo.startswith("kim-codefresh/"):
+            raise HTTPException(
+                status_code=403,
+                detail=f"SAFETY BLOCK: repo '{repo}' is not under kim-codefresh. "
+                       "This harness may only write to kim-codefresh repositories."
+            )
     req = urllib.request.Request(
         f"https://api.github.com/repos/{GITHUB_REPO}{path}",
         method=method,

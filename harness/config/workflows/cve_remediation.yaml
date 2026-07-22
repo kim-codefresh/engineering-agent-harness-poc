@@ -30,11 +30,11 @@ steps:
       authorized: prepare
 
   - id: prepare
-    agent: fix_preparer
-    next: open_pr
+    agent: fix_preparer        # LLM writes the fix content and PR description
+    next: open_pr              # CODE creates the branch, commits, opens draft PR
 
   - id: open_pr
-    agent: pr_opener
+    agent: pr_opener           # deterministic: GitHub API calls only
     next: pr_gate
 
   - id: pr_gate
@@ -43,7 +43,11 @@ steps:
       options: [approved, changes_requested]
     routes:
       changes_requested: record
-      approved:          record
+      approved:          merge             # human approved → code merges
+
+  - id: merge
+    agent: pr_merger           # deterministic: GitHub API merge call only
+    next: record
 
   - id: record
     agent: outcome_recorder

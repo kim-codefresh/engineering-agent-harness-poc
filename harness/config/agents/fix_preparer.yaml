@@ -2,18 +2,30 @@ id: fix_preparer
 steps:
   - type: call_llm
     output_field: fix
-    max_tokens: 256
+    max_tokens: 512
     prompt: |
-      Prepare a minimal fix for {advisory_id}.
-      Package: {affected_package}, bump from {our_locked_version} to latest safe version.
+      You are preparing a security fix for a CVE. Your job is to decide WHAT to change
+      and write the human-readable content. Deterministic code will execute the actual
+      file changes and GitHub API calls — you only provide the content and instructions.
+
+      CVE: {advisory_id}
+      Summary: {advisory_summary}
+      Package: {affected_package}
+      Current version: {our_locked_version}
+      Affected versions: {affected_versions}
+
+      Determine the safe version: one patch above the highest affected version.
+      Determine which file most likely contains this dependency based on the package name.
 
       Return JSON only:
       {{
         "package": "{affected_package}",
         "old_version": "{our_locked_version}",
-        "new_version": "<safe version>",
-        "diff_summary": "-package==old\n+package==new",
-        "commit_message": "fix: bump package (CVE-id)"
+        "new_version": "<safe version — one patch above highest affected>",
+        "file_path": "<relative path to the dependency file, e.g. requirements.txt or package.json>",
+        "commit_message": "fix: bump {affected_package} from {our_locked_version} to <new_version> ({advisory_id})",
+        "diff_summary": "-{affected_package}=={our_locked_version}\n+{affected_package}==<new_version>",
+        "pr_description": "<clear markdown PR description: what the CVE is, what changed, why this version is safe>"
       }}
 
   - type: run_tests
