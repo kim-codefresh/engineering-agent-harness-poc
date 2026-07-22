@@ -1,0 +1,35 @@
+harness/server.py
+  s_8c4312024059e4::t_a907c57ef97879 33-41
+harness/config/agents/fix_preparer.yaml
+  s_8c4312024059e4::t_67a8c6ef6f8bbf 5,7-18,24-28
+harness/step_types/github_api.py
+  s_8c4312024059e4::t_187045f87097de 1-75
+harness/config/agents/pr_merger.yaml
+  s_8c4312024059e4::t_382f73c1daeabb 1-4
+harness/step_types/merge_pr.py
+  s_8c4312024059e4::t_21b71eac2631a9 1-9,11-42
+  s_8c4312024059e4::t_ad2e35e9a99541 10
+harness/step_types/open_pr.py
+  s_8c4312024059e4::t_224f84149a1ccd 12
+  s_8c4312024059e4::t_5f815dfef21aac 1-11,13-19,21-90,92-95
+harness/config/workflows/cve_remediation.yaml
+  s_8c4312024059e4::t_890a274cc37650 33-34,37,46-50
+harness/step_types/__init__.py
+  s_8c4312024059e4::t_ab767111dec1cd 1,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "611cc78345db79e5badf07649d17fe90544144a3",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
