@@ -1,0 +1,20 @@
+harness/ui/index.html
+  s_8c4312024059e4::t_c0e3d2992afa8d 364-376
+  s_8c4312024059e4::t_4900195a586c43 84-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "93a6b67442ab182aab28958bc48a07beabf85a86",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
