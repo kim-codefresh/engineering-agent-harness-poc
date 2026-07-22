@@ -1,56 +1,77 @@
 """
-Harness graph builder — translates workflow + agent configs into a compiled
-LangGraph graph. This is the only file in the harness that imports LangGraph.
+Harness graph builder — translates workflow YAML into a compiled LangGraph graph.
 
-Step model:
-  - type: <step_type>   direct step type (deterministic or LLM) — primary model
-  - agent: <agent_id>   reusable named composition of step types (optional)
-  - gate:               human decision point
+Step kinds (must be declared explicitly in the workflow):
+  agent:          non-deterministic — uses an LLM or named agent composition
+  deterministic:  pure code — no LLM, predictable, safe to repeat
+  gate:           human decision point — pauses until a person decides
+
+This is the only file in the harness that imports LangGraph directly.
 """
-from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
+
 from step_types import REGISTRY as STEP_REGISTRY
 
 
-# ── Direct step type node ─────────────────────────────────────────────────────
+# ── Executors ─────────────────────────────────────────────────────────────────
 
-def build_step_node(step_config: dict) -> callable:
-    """A single step executed directly — deterministic code or LLM call."""
-    step_type = step_config["type"]
+def _run_step_type(step_cfg: dict) -> callable:
+    """Execute a single step type (shared by both agent and deterministic nodes)."""
+    step_type = step_cfg["type"]
 
-    def step_node(state: dict) -> dict:
+    def node(state: dict) -> dict:
         module = STEP_REGISTRY[step_type]
-        return module.execute(state, step_config)
+        return module.execute(state, step_cfg)
 
-    step_node.__name__ = step_config.get("id", step_type)
-    return step_node
-
-
-# ── Agent node (reusable composition) ────────────────────────────────────────
-
-def build_agent_node(agent_config: dict) -> callable:
-    """A named group of step types — only used when reuse across workflows matters."""
-    steps = agent_config["steps"]
-
-    def agent_node(state: dict) -> dict:
-        accumulated = {}
-        for step_cfg in steps:
-            module = STEP_REGISTRY[step_cfg["type"]]
-            result = module.execute({**state, **accumulated}, step_cfg)
-            accumulated.update(result)
-        return accumulated
-
-    agent_node.__name__ = agent_config["id"]
-    return agent_node
+    node.__name__ = step_cfg.get("id", step_type)
+    return node
 
 
-# ── Gate node ─────────────────────────────────────────────────────────────────
+def _run_agent_composition(agent_cfg: dict) -> callable:
+    """Execute a named agent — a sequence of step types from an .md definition."""
+    steps = agent_cfg["steps"]
 
-def build_gate_node(gate_config: dict, step_id: str) -> callable:
-    output_field = gate_config["output_field"]
+    def node(state: dict) -> dict:
+        acc = {}
+        for s in steps:
+            result = STEP_REGISTRY[s["type"]].execute({**state, **acc}, s)
+            acc.update(result)
+        return acc
+
+    node.__name__ = agent_cfg["id"]
+    return node
+
+
+def _build_agent_node(step: dict, agent_registry: dict) -> callable:
+    """
+    Build a node for a step declared as `agent:`.
+    Supports two forms:
+      agent:
+        uses: named_agent     # references an .md agent definition
+      agent:
+        type: call_llm        # inline LLM step
+        prompt: "..."
+    """
+    cfg = step["agent"]
+    if "uses" in cfg:
+        named = agent_registry.get(cfg["uses"])
+        if not named:
+            raise KeyError(f"Agent '{cfg['uses']}' not found in registry")
+        return _run_agent_composition(named)
+    return _run_step_type({**cfg, "id": step["id"]})
+
+
+def _build_deterministic_node(step: dict) -> callable:
+    """Build a node for a step declared as `deterministic:`."""
+    return _run_step_type({**step["deterministic"], "id": step["id"]})
+
+
+def _build_gate_node(gate_cfg: dict, step_id: str) -> callable:
+    field = gate_cfg["output_field"]
 
     def gate_node(state: dict) -> dict:
-        return {output_field: state[output_field]}
+        return {field: state[field]}
 
     gate_node.__name__ = step_id
     return gate_node
@@ -64,16 +85,13 @@ def build_graph(workflow_config: dict, agent_registry: dict) -> tuple:
 
     for step in workflow_config["steps"]:
         step_id = step["id"]
-        if "type" in step:
-            # Primary model: step type declared directly on the workflow step
-            graph.add_node(step_id, build_step_node(step))
-        elif "agent" in step:
-            # Reuse model: reference a named agent composition
-            agent_cfg = agent_registry[step["agent"]]
-            graph.add_node(step_id, build_agent_node(agent_cfg))
+        if "agent" in step:
+            graph.add_node(step_id, _build_agent_node(step, agent_registry))
+        elif "deterministic" in step:
+            graph.add_node(step_id, _build_deterministic_node(step))
         elif "gate" in step:
             gate_ids.append(step_id)
-            graph.add_node(step_id, build_gate_node(step["gate"], step_id))
+            graph.add_node(step_id, _build_gate_node(step["gate"], step_id))
 
     graph.set_entry_point(workflow_config["steps"][0]["id"])
 
@@ -97,16 +115,13 @@ def build_graph(workflow_config: dict, agent_registry: dict) -> tuple:
 def compile_workflow(workflow_config: dict, agent_registry: dict,
                      checkpointer=None) -> tuple:
     graph, gate_ids = build_graph(workflow_config, agent_registry)
-
     gate_meta = {
         s["id"]: {
             "options":      s["gate"]["options"],
             "output_field": s["gate"]["output_field"],
         }
-        for s in workflow_config["steps"]
-        if "gate" in s
+        for s in workflow_config["steps"] if "gate" in s
     }
-
     compiled = graph.compile(
         checkpointer=checkpointer or MemorySaver(),
         interrupt_before=gate_ids,

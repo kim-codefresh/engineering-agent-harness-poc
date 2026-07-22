@@ -372,16 +372,14 @@ function renderAgentDetail(main) {
 // ── Graph tab — workflow ──────────────────────────────────────────────────────
 function renderGraphTab() {
   const steps = _editing.config.steps || [];
-  const agentOpts = Object.keys(S.agents).map(a=>`<option value="${a}" ${''/*set later*/}>${a}</option>`).join('');
-  const stepOpts  = (id) => steps.map(s=>`<option value="${s.id}" ${s.id===id?'selected':''}>${s.id}</option>`).join('');
-
   const svg = buildWorkflowSvg(steps);
-  const editor = _selectedStep ? buildStepEditor(_selectedStep, steps, agentOpts, stepOpts) : `<div style="font-size:12px;color:var(--text-dim);padding:12px 16px;">Click a node to edit it.</div>`;
+  const editor = _selectedStep ? buildStepEditor(_selectedStep, steps) : `<div style="font-size:12px;color:var(--text-dim);padding:12px 16px;">Click a node to edit it.</div>`;
 
   return `
     <div class="graph-toolbar">
-      <button class="btn-sm" onclick="addWorkflowStep('agent')">+ Agent step</button>
-      <button class="btn-sm" onclick="addWorkflowStep('gate')">⬟ Gate step</button>
+      <button class="btn-sm" style="color:#7C3AED;border-color:#8B5CF6" onclick="addWorkflowStep('agent')">+ Agent step</button>
+      <button class="btn-sm" style="color:#1D4ED8;border-color:#3B82F6" onclick="addWorkflowStep('deterministic')">+ Code step</button>
+      <button class="btn-sm" style="color:var(--gate);border-color:var(--gate)" onclick="addWorkflowStep('gate')">+ Gate</button>
       <div style="flex:1"></div>
       <button class="btn-sm accent" onclick="saveEditing()">Save changes</button>
     </div>
@@ -424,12 +422,12 @@ function buildWorkflowSvg(steps) {
 
     if (isGate) {
       const hw=nodeW/2, hh=gateH/2, mx=cx, my=sy+hh;
+      const fill=selected?'#FEF3C7':'#FFFBEB', stroke=selected?'#D97706':'#F59E0B';
       html+=`<polygon points="${mx},${my-hh} ${mx+hw},${my} ${mx},${my+hh} ${mx-hw},${my}"
-        fill="${selFill}" stroke="${selStroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
+        fill="${fill}" stroke="${stroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
         onclick="selectStep('${step.id}')"/>
-        <text x="${cx}" y="${my+4}" text-anchor="middle" font-size="11" fill="${textCol}"
-          font-family="monospace" font-weight="600" style="pointer-events:none">[G] ${step.id}</text>`;
-      // route labels stacked BELOW the diamond
+        <text x="${cx}" y="${my+4}" text-anchor="middle" font-size="11" fill="#92400E"
+          font-family="monospace" font-weight="600" style="pointer-events:none">gate: ${step.id}</text>`;
       if (step.routes) {
         let ri=0;
         for (const [opt, dest] of Object.entries(step.routes)) {
@@ -440,58 +438,90 @@ function buildWorkflowSvg(steps) {
         }
       }
     } else {
+      const isAgent='agent' in step;
+      // agent=purple  deterministic=blue
+      const fill  = selected?(isAgent?'#EDE9FE':'#DBEAFE'):(isAgent?'#F5F3FF':'#EFF6FF');
+      const stroke= selected?(isAgent?'#7C3AED':'#1D4ED8'):(isAgent?'#8B5CF6':'#3B82F6');
+      const tc    = isAgent?'#5B21B6':'#1D4ED8';
+      const label = isAgent?`agent: ${step.id}`:`code: ${step.id}`;
       const x=cx-nodeW/2;
       html+=`<rect x="${x}" y="${sy}" width="${nodeW}" height="${nodeH}" rx="6"
-        fill="${selFill}" stroke="${selStroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
+        fill="${fill}" stroke="${stroke}" stroke-width="${selected?2:1.5}" style="cursor:pointer"
         onclick="selectStep('${step.id}')"/>
-        <text x="${cx}" y="${sy+nodeH/2+4}" text-anchor="middle" font-size="11" fill="${textCol}"
-          font-family="monospace" font-weight="600" style="pointer-events:none">[A] ${step.id}</text>`;
+        <text x="${cx}" y="${sy+nodeH/2+4}" text-anchor="middle" font-size="11" fill="${tc}"
+          font-family="monospace" font-weight="600" style="pointer-events:none">${label}</text>`;
     }
   });
   return `<svg class="igraph" width="${W}" height="${totalH}" viewBox="0 0 ${W} ${totalH}">${html}</svg>`;
 }
 
-function buildStepEditor(stepId, steps, agentOpts, stepOpts) {
+function buildStepEditor(stepId, steps) {
   const step = steps.find(s=>s.id===stepId);
   if (!step) return '';
-  const isGate = 'gate' in step;
+  const isGate='gate' in step, isAgent='agent' in step, isDet='deterministic' in step;
   const stepIds = steps.map(s=>s.id).filter(id=>id!==stepId);
+  const nextOpts = stepIds.map(id=>`<option value="${id}" ${step.next===id?'selected':''}>${id}</option>`).join('');
+  const delBtn = `<button class="btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="removeStep('${stepId}')">Delete</button>`;
 
   if (isGate) {
-    const g = step.gate||{};
-    const opts = (g.options||[]).join(', ');
-    const routeRows = (g.options||[]).map(opt=>`
+    const g=step.gate||{};
+    const routeRows=(g.options||[]).map(opt=>`
       <div style="font-family:var(--mono);font-size:12px;color:var(--text-mid)">${opt}</div>
       <div class="route-arrow">→</div>
       <select class="ne-input" onchange="updateRoute('${stepId}','${opt}',this.value)">
         <option value="">— none —</option>
         ${stepIds.map(id=>`<option value="${id}" ${step.routes?.[opt]===id?'selected':''}>${id}</option>`).join('')}
       </select>`).join('');
-    return `<div class="node-editor-title"><span>⬟ Gate: ${stepId}</span>
-      <button class="btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="removeStep('${stepId}')">Delete</button></div>
+    return `<div class="node-editor-title"><span style="color:var(--gate)">gate: ${stepId}</span>${delBtn}</div>
       <div class="ne-grid">
         <span class="ne-label">Step ID</span><input class="ne-input" value="${step.id}" onchange="renameStep('${stepId}',this.value)"/>
         <span class="ne-label">Output field</span><input class="ne-input" value="${g.output_field||''}" onchange="updateGateField('${stepId}','output_field',this.value)"/>
-        <span class="ne-label">Options</span><input class="ne-input" value="${opts}" placeholder="a, b, c" onchange="updateGateOptions('${stepId}',this.value)"/>
-        <span class="ne-label" style="align-self:start;margin-top:2px">Routes</span>
-        <div><div class="routes-table">${routeRows}</div></div>
+        <span class="ne-label">Options</span><input class="ne-input" value="${(g.options||[]).join(', ')}" placeholder="a, b, c" onchange="updateGateOptions('${stepId}',this.value)"/>
+        <span class="ne-label" style="align-self:start">Routes</span><div><div class="routes-table">${routeRows}</div></div>
       </div>`;
-  } else {
-    const currentAgent = step.agent||'';
-    const aopts = Object.keys(S.agents).map(a=>`<option value="${a}" ${a===currentAgent?'selected':''}>${a}</option>`).join('');
-    const nextOpts = steps.map(s=>s.id).filter(id=>id!==stepId)
-      .map(id=>`<option value="${id}" ${step.next===id?'selected':''}>${id}</option>`).join('');
-    return `<div class="node-editor-title"><span>◈ Agent step: ${stepId}</span>
-      <button class="btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="removeStep('${stepId}')">Delete</button></div>
+  }
+
+  if (isAgent) {
+    const cfg=step.agent||{};
+    const usesOpts=Object.keys(S.agents).map(a=>`<option value="${a}" ${cfg.uses===a?'selected':''}>${a}</option>`).join('');
+    const typeOpts=S.stepTypes.map(t=>`<option value="${t}" ${cfg.type===t?'selected':''}>${t}</option>`).join('');
+    const isNamed=!!cfg.uses;
+    return `<div class="node-editor-title"><span style="color:#7C3AED">agent: ${stepId}</span>${delBtn}</div>
       <div class="ne-grid">
         <span class="ne-label">Step ID</span><input class="ne-input" value="${step.id}" onchange="renameStep('${stepId}',this.value)"/>
-        <span class="ne-label">Agent</span><select class="ne-input" onchange="updateAgentStep('${stepId}',this.value)">${aopts}</select>
+        <span class="ne-label">Kind</span>
+        <select class="ne-input" onchange="toggleAgentKind('${stepId}',this.value)">
+          <option value="inline" ${!isNamed?'selected':''}>inline (LLM call)</option>
+          <option value="named" ${isNamed?'selected':''}>reuse named agent</option>
+        </select>
+        ${isNamed
+          ? `<span class="ne-label">Uses agent</span><select class="ne-input" onchange="updateAgentUses('${stepId}',this.value)">${usesOpts}</select>`
+          : `<span class="ne-label">Step type</span><select class="ne-input" onchange="updateAgentInlineType('${stepId}',this.value)">${typeOpts}</select>
+             <span class="ne-label">Output field</span><input class="ne-input" value="${cfg.output_field||''}" onchange="updateAgentInlineField('${stepId}','output_field',this.value)"/>`
+        }
         <span class="ne-label">Next step</span>
         <select class="ne-input" onchange="updateNext('${stepId}',this.value)">
           <option value="">— end —</option>${nextOpts}
         </select>
       </div>`;
   }
+
+  if (isDet) {
+    const cfg=step.deterministic||{};
+    const typeOpts=S.stepTypes.map(t=>`<option value="${t}" ${cfg.type===t?'selected':''}>${t}</option>`).join('');
+    return `<div class="node-editor-title"><span style="color:#1D4ED8">code: ${stepId}</span>${delBtn}</div>
+      <div class="ne-grid">
+        <span class="ne-label">Step ID</span><input class="ne-input" value="${step.id}" onchange="renameStep('${stepId}',this.value)"/>
+        <span class="ne-label">Step type</span><select class="ne-input" onchange="updateDetType('${stepId}',this.value)">${typeOpts}</select>
+        <span class="ne-label">Output field</span><input class="ne-input" value="${cfg.output_field||''}" onchange="updateDetField('${stepId}','output_field',this.value)"/>
+        <span class="ne-label">Next step</span>
+        <select class="ne-input" onchange="updateNext('${stepId}',this.value)">
+          <option value="">— end —</option>${nextOpts}
+        </select>
+      </div>`;
+  }
+
+  return `<div style="color:var(--text-dim);font-size:12px">Unknown step kind for ${stepId}</div>`;
 }
 
 // ── Graph tab — agent ─────────────────────────────────────────────────────────
@@ -576,8 +606,10 @@ function addWorkflowStep(kind) {
   const steps=_editing.config.steps||(_editing.config.steps=[]);
   const idx=steps.length;
   if (kind==='agent') {
-    const firstAgent=Object.keys(S.agents)[0]||'my_agent';
-    steps.push({id:`step_${idx}`, agent:firstAgent});
+    steps.push({id:`agent_${idx}`, agent:{type:'call_llm', output_field:'result', prompt:'Your prompt here...'}});
+  } else if (kind==='deterministic') {
+    const firstType=S.stepTypes.find(t=>t!=='call_llm')||S.stepTypes[0]||'gather_evidence';
+    steps.push({id:`code_${idx}`, deterministic:{type:firstType, output_field:'result'}});
   } else {
     steps.push({id:`gate_${idx}`, gate:{output_field:`decision_${idx}`, options:['approved','rejected']}, routes:{}});
   }
@@ -617,6 +649,33 @@ function renameStep(oldId, newId) {
   step.id=newId; _selectedStep=newId; markDirty(); renderMain();
 }
 
+function toggleAgentKind(stepId, kind) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (!step) return;
+  if (kind==='named') step.agent={uses:Object.keys(S.agents)[0]||''};
+  else step.agent={type:'call_llm', output_field:'result', prompt:''};
+  markDirty(); renderMain();
+}
+function updateAgentUses(stepId, val) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (step?.agent) { step.agent.uses=val; markDirty(); renderMain(); }
+}
+function updateAgentInlineType(stepId, val) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (step?.agent) { step.agent.type=val; markDirty(); renderMain(); }
+}
+function updateAgentInlineField(stepId, field, val) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (step?.agent) { step.agent[field]=val; markDirty(); renderMain(); }
+}
+function updateDetType(stepId, val) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (step?.deterministic) { step.deterministic.type=val; markDirty(); renderMain(); }
+}
+function updateDetField(stepId, field, val) {
+  const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
+  if (step?.deterministic) { step.deterministic[field]=val; markDirty(); renderMain(); }
+}
 function updateAgentStep(stepId, agentId) {
   const step=(_editing.config.steps||[]).find(s=>s.id===stepId);
   if (step) { step.agent=agentId; markDirty(); renderMain(); }
