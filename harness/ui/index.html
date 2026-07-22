@@ -81,11 +81,12 @@ body{font-family:var(--sans);background:var(--ground);color:var(--text);font-siz
 .step-connector{width:36px;min-width:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
 .step-connector::before{content:'';position:absolute;left:0;right:0;height:1px;background:var(--border-2)}
 .step-connector svg{background:var(--ground);position:relative;z-index:1}
-.gate-diamond{width:148px;min-width:148px;height:72px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
-.gate-diamond-inner{width:100px;height:56px;transform:rotate(45deg);background:var(--amber-bg);border:1.5px solid var(--amber);cursor:pointer;transition:all .15s}
-.gate-diamond-inner:hover{background:#FEF3C7;box-shadow:0 4px 12px rgba(217,119,6,.2)}
-.gate-diamond.selected .gate-diamond-inner{border-width:2px;box-shadow:0 0 0 2px rgba(217,119,6,.3)}
-.gate-label{position:absolute;font-size:11px;font-weight:600;color:var(--amber);font-family:var(--mono);white-space:nowrap;text-align:center;width:100%;pointer-events:none}
+.gate-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;cursor:pointer}
+.gate-svg polygon{transition:fill .12s}
+.gate-wrap:hover .gate-svg polygon{fill:#FEF3C7}
+.gate-wrap.selected .gate-svg polygon{stroke-width:2.5;filter:drop-shadow(0 0 4px rgba(217,119,6,.35))}
+.gate-routes{display:flex;flex-direction:column;gap:3px;align-items:center}
+.gate-route-pill{font-size:9.5px;font-family:var(--mono);color:var(--amber);background:var(--amber-bg);border:1px solid rgba(217,119,6,.25);border-radius:10px;padding:1px 7px;white-space:nowrap}
 .route-labels{display:flex;flex-direction:column;gap:3px;margin-top:6px}
 .route-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);text-align:center}
 
@@ -360,14 +361,19 @@ function buildPipelineRow(steps) {
     const isGate='gate' in step, isAgent='agent' in step, isDet='deterministic' in step;
     const conn = i<steps.length-1 ? `<div class="step-connector"><svg width="20" height="16"><path d="M0 8 L12 8 L6 4 L12 8 L6 12 L12 8" fill="none" stroke="#CBD5E1" stroke-width="1.5"/></svg></div>` : '';
     if (isGate) {
-      const g=step.gate||{};
-      const routes=step.routes?Object.entries(step.routes).map(([o,d])=>`<div class="route-label">${o} → ${d}</div>`).join(''):'';
-      return `<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0" onclick="selectStep('${step.id}')">
-        <div class="gate-diamond ${_selStep===step.id?'selected':''}">
-          <div class="gate-diamond-inner"></div>
-          <div class="gate-label">${step.id}</div>
-        </div>
-        ${routes?`<div class="route-labels">${routes}</div>`:''}
+      const sel=_selStep===step.id;
+      const routes=step.routes?Object.entries(step.routes).map(([o,d])=>`<div class="gate-route-pill">${o} → ${d||'?'}</div>`).join(''):'';
+      return `<div class="gate-wrap ${sel?'selected':''}" onclick="selectStep('${step.id}')">
+        <svg class="gate-svg" width="130" height="68" viewBox="0 0 130 68">
+          <polygon points="65,4 126,34 65,64 4,34"
+            fill="${sel?'#FEF3C7':'#FFFBEB'}"
+            stroke="#F59E0B" stroke-width="${sel?2.5:1.5}" stroke-linejoin="round"/>
+          <text x="65" y="30" text-anchor="middle" font-size="9" fill="#92400E"
+            font-family="Menlo,Consolas,monospace" font-weight="500" letter-spacing=".04em">GATE</text>
+          <text x="65" y="44" text-anchor="middle" font-size="11" fill="#78350F"
+            font-family="Menlo,Consolas,monospace" font-weight="700">${step.id}</text>
+        </svg>
+        ${routes?`<div class="gate-routes">${routes}</div>`:''}
       </div>${conn}`;
     }
     const cls=isAgent?'agent':isDet?'deterministic':'';
