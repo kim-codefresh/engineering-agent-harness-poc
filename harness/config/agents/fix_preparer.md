@@ -1,3 +1,4 @@
+---
 id: fix_preparer
 steps:
   - type: call_llm
@@ -18,15 +19,35 @@ steps:
       Determine which file most likely contains this dependency based on the package name.
 
       Return JSON only:
-      {{
+      {
         "package": "{affected_package}",
         "old_version": "{our_locked_version}",
-        "new_version": "<safe version — one patch above highest affected>",
-        "file_path": "<relative path to the dependency file, e.g. requirements.txt or package.json>",
+        "new_version": "<safe version>",
+        "file_path": "<relative path to dependency file>",
         "commit_message": "fix: bump {affected_package} from {our_locked_version} to <new_version> ({advisory_id})",
         "diff_summary": "-{affected_package}=={our_locked_version}\n+{affected_package}==<new_version>",
-        "pr_description": "<clear markdown PR description: what the CVE is, what changed, why this version is safe>"
-      }}
+        "pr_description": "<clear markdown PR description explaining the CVE and the change>"
+      }
 
   - type: run_tests
     output_field: validation
+---
+
+# Fix Preparer
+
+Reusable agent that generates the content for a CVE fix. The LLM decides WHAT to
+change and writes the PR description. Deterministic step types (`open_pr`, `merge_pr`)
+execute the actual GitHub operations.
+
+## Output: `fix`
+| Field | Description |
+|---|---|
+| `package` | Package name to bump |
+| `old_version` | Current locked version |
+| `new_version` | Safe version (LLM-determined) |
+| `file_path` | Relative path to the dependency file |
+| `commit_message` | Git commit message |
+| `pr_description` | Markdown PR body (written by LLM) |
+
+## Output: `validation`
+Mock test run result — passes unless the fix introduces obvious issues.

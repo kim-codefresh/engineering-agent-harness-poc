@@ -1,16 +1,35 @@
 """
-Harness graph builder — translates workflow + agent YAML configs into a
-compiled LangGraph graph. This is the only file in the harness that
-imports LangGraph directly.
+Harness graph builder — translates workflow + agent configs into a compiled
+LangGraph graph. This is the only file in the harness that imports LangGraph.
+
+Step model:
+  - type: <step_type>   direct step type (deterministic or LLM) — primary model
+  - agent: <agent_id>   reusable named composition of step types (optional)
+  - gate:               human decision point
 """
 from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from step_types import REGISTRY as STEP_REGISTRY
 
 
-# ── Agent builder ────────────────────────────────────────────────────────────
+# ── Direct step type node ─────────────────────────────────────────────────────
+
+def build_step_node(step_config: dict) -> callable:
+    """A single step executed directly — deterministic code or LLM call."""
+    step_type = step_config["type"]
+
+    def step_node(state: dict) -> dict:
+        module = STEP_REGISTRY[step_type]
+        return module.execute(state, step_config)
+
+    step_node.__name__ = step_config.get("id", step_type)
+    return step_node
+
+
+# ── Agent node (reusable composition) ────────────────────────────────────────
 
 def build_agent_node(agent_config: dict) -> callable:
+    """A named group of step types — only used when reuse across workflows matters."""
     steps = agent_config["steps"]
 
     def agent_node(state: dict) -> dict:
@@ -25,7 +44,7 @@ def build_agent_node(agent_config: dict) -> callable:
     return agent_node
 
 
-# ── Gate node builder ────────────────────────────────────────────────────────
+# ── Gate node ─────────────────────────────────────────────────────────────────
 
 def build_gate_node(gate_config: dict, step_id: str) -> callable:
     output_field = gate_config["output_field"]
@@ -37,7 +56,7 @@ def build_gate_node(gate_config: dict, step_id: str) -> callable:
     return gate_node
 
 
-# ── Graph builder ────────────────────────────────────────────────────────────
+# ── Graph builder ─────────────────────────────────────────────────────────────
 
 def build_graph(workflow_config: dict, agent_registry: dict) -> tuple:
     graph    = StateGraph(dict)
@@ -45,7 +64,11 @@ def build_graph(workflow_config: dict, agent_registry: dict) -> tuple:
 
     for step in workflow_config["steps"]:
         step_id = step["id"]
-        if "agent" in step:
+        if "type" in step:
+            # Primary model: step type declared directly on the workflow step
+            graph.add_node(step_id, build_step_node(step))
+        elif "agent" in step:
+            # Reuse model: reference a named agent composition
             agent_cfg = agent_registry[step["agent"]]
             graph.add_node(step_id, build_agent_node(agent_cfg))
         elif "gate" in step:

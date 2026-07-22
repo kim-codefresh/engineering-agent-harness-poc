@@ -1,4 +1,0 @@
-id: pr_merger
-steps:
-  - type: merge_pr
-    output_field: pr

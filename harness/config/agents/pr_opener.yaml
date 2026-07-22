@@ -1,4 +1,0 @@
-id: pr_opener
-steps:
-  - type: open_pr
-    output_field: pr
