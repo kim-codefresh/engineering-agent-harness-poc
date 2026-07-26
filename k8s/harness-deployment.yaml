@@ -37,6 +37,8 @@ spec:
               value: "kim-codefresh/engineering-agent-harness-poc"
             - name: GITHUB_BASE_BRANCH
               value: "feat/full-cve-flow-human-gates-lift-and-shift"
+            - name: TARGET_REPO
+              value: "kim-codefresh/cf-api-test"
             - name: LINEAR_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:

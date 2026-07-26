@@ -46,19 +46,61 @@ def _run_agent_composition(agent_cfg: dict) -> callable:
 def _build_agent_node(step: dict, agent_registry: dict) -> callable:
     """
     Build a node for a step declared as `agent:`.
-    Supports two forms:
+    Supports three forms:
       agent:
         uses: named_agent     # references an .md agent definition
       agent:
         type: call_llm        # inline LLM step
         prompt: "..."
+    Named agent with no steps → runs as a single call_llm using the agent's
+    model and tools declared in its .md frontmatter.
     """
     cfg = step["agent"]
     if "uses" in cfg:
         named = agent_registry.get(cfg["uses"])
         if not named:
             raise KeyError(f"Agent '{cfg['uses']}' not found in registry")
-        return _run_agent_composition(named)
+        # If the agent has explicit step types, compose them
+        if named.get("steps"):
+            return _run_agent_composition(named)
+        # Otherwise it's an LLM agent — run it via call_llm with its declared model
+        agent_id = named.get("id", cfg["uses"])
+        model    = named.get("model", None)
+        tools    = named.get("tools", [])
+
+        def llm_agent_node(state: dict) -> dict:
+            import os
+            import litellm
+            import json
+            run_model = model or os.getenv("LITELLM_MODEL", "anthropic/claude-haiku-4-5-20251001")
+            system = (
+                f"You are the {agent_id} agent. "
+                f"Use the tools available to complete your task and return a structured JSON result. "
+                f"Available tools: {', '.join(tools) if tools else 'none declared'}. "
+                f"State keys available: {list(state.keys())}."
+            )
+            user = f"Current state:\n{json.dumps({k: v for k, v in state.items() if not isinstance(v, (bytes,))}, indent=2, default=str)}"
+            print(f"[graph_builder] Running LLM agent: {agent_id} with model {run_model}")
+            resp = litellm.completion(
+                model=run_model,
+                max_tokens=named.get("budget_tokens", 4096),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            content = resp.choices[0].message.content
+            try:
+                result = json.loads(content)
+                if not isinstance(result, dict):
+                    result = {"agent_response": result}
+            except Exception:
+                result = {"agent_response": content}
+            return result
+
+        llm_agent_node.__name__ = agent_id
+        return llm_agent_node
+
     return _run_step_type({**cfg, "id": step["id"]})
 
 

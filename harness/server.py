@@ -301,21 +301,23 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     package   = pkg_match.group(1) if pkg_match else "unknown-package"
     version   = ver_match.group(1) if ver_match else "0.0.0"
 
-    thread_id = f"cve_remediation-{issue_id[:8]}-{int(time.time())}"
+    # Extract Linear identifier (e.g. CFS-7827) for branch naming
+    identifier = issue.get("identifier", issue_id[:8].upper())
+    branch_name = f"{identifier.lower()}-fix"
+    thread_id   = f"cve_remediation-{identifier.lower()}-{int(time.time())}"
+
+    # Pass the full raw ticket so parse_cve_ticket skill can do proper extraction
     ticket = {
-        "cve_id":      cve_id,
-        "advisory": {
-            "id":                cve_id,
-            "summary":           title,
-            "package":           package,
-            "affected_versions": [version],
-        },
-        "dependencies": {package: version},
-        "linear_issue": {"id": issue_id, "url": issue.get("url", "")},
+        "ticket_id":          identifier,
+        "ticket_title":       title,
+        "ticket_description": description,
+        "linear_issue":       {"id": issue_id, "url": issue.get("url", ""), "identifier": identifier},
+        "branch_name":        branch_name,
+        "target_repo":        os.getenv("TARGET_REPO", "kim-codefresh/cf-api-test"),
     }
 
     background_tasks.add_task(_start_workflow, "cve_remediation", thread_id, ticket)
-    return {"status": "accepted", "thread_id": thread_id, "cve_id": cve_id}
+    return {"status": "accepted", "thread_id": thread_id, "ticket_id": identifier, "branch": branch_name}
 
 
 def _start_workflow(workflow_id: str, thread_id: str, ticket: dict):

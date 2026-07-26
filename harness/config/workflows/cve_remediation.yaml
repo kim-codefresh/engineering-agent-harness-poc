@@ -1,107 +1,88 @@
 id: cve_remediation
 trigger:
   source: linear
-  event: cve.created
+  event: issue.label_added
+  filter:
+    label: kim-test-harness
 
 steps:
-  - id: gather
-    deterministic:
-      type: gather_evidence
-      output_field: evidence
-    next: assess
-
-  - id: assess
+  # ── STEP 1: Agent investigates, finds and prepares the patch ─────────────
+  - id: research
     agent:
-      type: call_llm
-      output_field: assessment
-      max_tokens: 512
-      prompt: |
-        You are a security engineer performing a CVE impact assessment.
-
-        CVE: {advisory_id}
-        Summary: {advisory_summary}
-        Affected versions: {affected_versions}
-        Our locked version: {our_locked_version}
-
-        Return JSON only:
-        {
-          "affected": true or false,
-          "risk_level": "low|medium|high",
-          "reasoning": "2-3 sentences",
-          "fix_complexity": "simple|moderate|complex",
-          "recommended_disposition": "no_fix_needed|fix_authorized|escalate"
-        }
+      uses: research_cve
     next: security_gate
 
+  # ── GATE 1: Security owner reviews the proposed fix ──────────────────────
   - id: security_gate
     gate:
       output_field: disposition
-      options: [no_fix_needed, fix_authorized, escalate]
+      options: [fix_authorized, mitigation, escalate]
     routes:
-      no_fix_needed: record
-      escalate:      record
-      fix_authorized: scope_gate
+      mitigation:     comment_mitigation
+      escalate:       record
+      fix_authorized: create_branch
 
-  - id: scope_gate
-    gate:
-      output_field: scope_authorized
-      options: [authorized, rejected]
-    routes:
-      rejected:  record
-      authorized: prepare_fix
-
-  - id: prepare_fix
-    agent:
-      type: call_llm
-      output_field: fix
-      max_tokens: 512
-      prompt: |
-        You are preparing a security fix. Write the content only.
-        Deterministic code will execute the actual GitHub operations.
-
-        CVE: {advisory_id}
-        Package: {affected_package}
-        Current version: {our_locked_version}
-        Affected versions: {affected_versions}
-
-        Return JSON only:
-        {
-          "package": "{affected_package}",
-          "old_version": "{our_locked_version}",
-          "new_version": "<one patch above highest affected>",
-          "file_path": "agent/requirements.txt",
-          "commit_message": "fix: bump {affected_package} from {our_locked_version} to <new_version> ({advisory_id})",
-          "diff_summary": "-{affected_package}=={our_locked_version}\n+{affected_package}==<new_version>",
-          "pr_description": "<markdown PR body explaining the CVE and the change>"
-        }
-    next: run_tests
-
-  - id: run_tests
+  # ── STEP 2: CODE — create branch in target repo ──────────────────────────
+  - id: create_branch
     deterministic:
-      type: run_tests
-      output_field: validation
+      type: github_create_branch
+      output_field: branch_result
+      base_branch: master
+    next: commit_files
+
+  # ── STEP 3: CODE — commit patched files ──────────────────────────────────
+  - id: commit_files
+    deterministic:
+      type: github_commit_files
+      output_field: commit_result
     next: open_pr
 
+  # ── STEP 4: CODE — open PR + add label + comment /e2e ────────────────────
   - id: open_pr
     deterministic:
-      type: open_pr
+      type: github_open_pr
       output_field: pr
+      base_branch: master
+    next: validate_pr
+
+  # ── STEP 5: pr_validator agent — wait for checks + security scan ─────────
+  - id: validate_pr
+    agent:
+      uses: pr_validator
     next: pr_gate
 
+  # ── GATE 2: Code owner reviews the PR ────────────────────────────────────
   - id: pr_gate
     gate:
       output_field: pr_decision
       options: [approved, changes_requested]
     routes:
       changes_requested: record
-      approved:          merge
+      approved:          merge_pr
 
-  - id: merge
+  # ── STEP 6: CODE — merge ─────────────────────────────────────────────────
+  - id: merge_pr
     deterministic:
       type: merge_pr
       output_field: pr
     next: record
 
+  # ── MITIGATION PATH ───────────────────────────────────────────────────────
+  - id: comment_mitigation
+    deterministic:
+      type: comment_on_linear
+      output_field: comment_result
+    next: mitigation_gate
+
+  - id: mitigation_gate
+    gate:
+      output_field: mitigation_decision
+      options: [done, retry_agent]
+    routes:
+      done:        record
+      retry_agent: research
+
+  # ── TERMINAL ──────────────────────────────────────────────────────────────
   - id: record
     deterministic:
       type: record_outcome
