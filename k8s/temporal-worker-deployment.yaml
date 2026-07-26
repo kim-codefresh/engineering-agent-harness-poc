@@ -1,0 +1,56 @@
+# Temporal worker — polls Temporal for workflow + activity tasks
+# Separate from the harness API server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harness-temporal-worker
+  namespace: agent-harness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: harness-temporal-worker
+  template:
+    metadata:
+      labels:
+        app: harness-temporal-worker
+    spec:
+      serviceAccountName: harness-runner
+      containers:
+        - name: worker
+          image: agent-harness:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "temporal.worker"]
+          env:
+            - name: TEMPORAL_HOST
+              value: "temporal-frontend.temporal.svc.cluster.local:7233"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "harness-queue"
+            - name: TARGET_REPO
+              value: "kim-codefresh/cf-api-test"
+            - name: LITELLM_MODEL
+              value: "anthropic/claude-haiku-4-5-20251001"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-credentials
+                  key: ANTHROPIC_API_KEY
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-credentials
+                  key: GITHUB_TOKEN
+            - name: LANGFUSE_HOST
+              value: "http://langfuse.langfuse.svc.cluster.local:3000"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-credentials
+                  key: public_key
+                  optional: true
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-credentials
+                  key: secret_key
+                  optional: true

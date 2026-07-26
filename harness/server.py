@@ -1,7 +1,13 @@
 """
 Harness server — generic, knows nothing about specific workflows.
 Serves both the REST API and the management UI.
+
+Orchestration: Temporal (replaces LangGraph).
+- Workflow runs are started as Temporal workflows
+- Human gate decisions are sent as Temporal signals
+- State is queried from Temporal (durable across crashes/redeploys)
 """
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -20,6 +26,26 @@ from fastapi.staticfiles import StaticFiles
 
 from registry import Registry
 from step_types import REGISTRY as STEP_REGISTRY
+
+# ── Temporal client (async, initialised on startup) ──────────────────────────
+
+TEMPORAL_HOST  = os.getenv("TEMPORAL_HOST", "temporal-frontend.temporal.svc.cluster.local:7233")
+TEMPORAL_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "harness-queue")
+_temporal_client = None
+
+
+async def _get_temporal():
+    global _temporal_client
+    if _temporal_client is None:
+        try:
+            from temporalio.client import Client
+            from temporal.workflow import HarnessWorkflow  # noqa: F401 — registers workflow
+            _temporal_client = await Client.connect(TEMPORAL_HOST)
+            print(f"[temporal] Connected to {TEMPORAL_HOST}")
+        except Exception as e:
+            print(f"[temporal] Could not connect: {e} — falling back to LangGraph")
+            _temporal_client = False
+    return _temporal_client if _temporal_client else None
 
 CONFIG_DIR = Path(__file__).parent / "config"
 GITHUB_REPO        = os.getenv("GITHUB_REPO", "kim-codefresh/engineering-agent-harness-poc")
@@ -61,78 +87,131 @@ def _gh(method: str, path: str, body: dict = None):
 app = FastAPI(title="Engineering Agent Harness")
 reg = Registry()
 
-
-def _cfg(thread_id: str) -> dict:
-    return {"configurable": {"thread_id": thread_id}}
-
-
-def _gate_context(wf_id: str, values: dict, node: str) -> dict:
-    meta = reg.gate_meta(wf_id).get(node, {})
-    return {
-        "gate":    node,
-        "options": meta.get("options", []),
-        "field":   meta.get("output_field"),
-        "state":   {k: v for k, v in values.items()
-                    if k in ("evidence", "assessment", "fix", "validation", "pr")},
-    }
+# In-memory run tracker (Temporal is authoritative; this is for the UI)
+_active_runs: dict = {}
 
 
-def _response(wf_id: str, thread_id: str, graph_state) -> dict:
+# ── Temporal workflow execution ───────────────────────────────────────────────
+
+@app.post("/api/run/{workflow_id}/{thread_id}")
+async def run(workflow_id: str, thread_id: str, ticket: dict):
+    from temporal.workflow import HarnessWorkflow, WorkflowInput
+
+    client = await _get_temporal()
+    if client:
+        # Start Temporal workflow
+        handle = await client.start_workflow(
+            HarnessWorkflow.run,
+            WorkflowInput(
+                workflow_id=workflow_id,
+                initial_state=ticket,
+                thread_id=thread_id,
+            ),
+            id=thread_id,
+            task_queue=TEMPORAL_QUEUE,
+        )
+        _active_runs[thread_id] = {
+            "status":    "running",
+            "workflow":  workflow_id,
+            "thread_id": thread_id,
+            "handle_id": handle.id,
+        }
+        return {"status": "running", "workflow": workflow_id, "thread_id": thread_id,
+                "engine": "temporal"}
+    else:
+        # Fallback to LangGraph
+        graph = reg.graph(workflow_id)
+        cfg   = {"configurable": {"thread_id": thread_id}}
+        graph.invoke(ticket, cfg)
+        gs = graph.get_state(cfg)
+        return _lg_response(workflow_id, thread_id, gs)
+
+
+@app.get("/api/state/{workflow_id}/{thread_id}")
+async def get_state(workflow_id: str, thread_id: str):
+    client = await _get_temporal()
+    if client:
+        try:
+            handle = client.get_workflow_handle(thread_id)
+            desc   = await handle.describe()
+            run_info = _active_runs.get(thread_id, {})
+            return {
+                "status":    desc.status.name.lower(),
+                "workflow":  workflow_id,
+                "thread_id": thread_id,
+                "engine":    "temporal",
+                "pending_gates": run_info.get("pending_gates", []),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=str(e))
+    else:
+        graph = reg.graph(workflow_id)
+        cfg   = {"configurable": {"thread_id": thread_id}}
+        gs    = graph.get_state(cfg)
+        if not gs.values:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        return _lg_response(workflow_id, thread_id, gs)
+
+
+@app.post("/api/decision/{workflow_id}/{thread_id}")
+async def submit_decision(workflow_id: str, thread_id: str, body: dict):
+    field    = body.get("field")
+    decision = body.get("decision")
+    if not field or not decision:
+        raise HTTPException(status_code=400, detail="field and decision are required")
+
+    client = await _get_temporal()
+    if client:
+        handle = client.get_workflow_handle(thread_id)
+        # Send Temporal signal — durable, survives crashes
+        await handle.signal(
+            "submit_gate_decision",
+            field,
+            decision,
+        )
+        return {"status": "signal_sent", "field": field, "decision": decision,
+                "engine": "temporal"}
+    else:
+        # LangGraph fallback
+        wf_config = reg.workflows.get(workflow_id, {})
+        steps = wf_config.get("steps", [])
+        gate_step = next((s for s in steps if "gate" in s
+                          and s["gate"].get("output_field") == field), None)
+        options = gate_step["gate"]["options"] if gate_step else []
+        if decision not in options:
+            raise HTTPException(status_code=400, detail=f"Invalid decision. Options: {options}")
+        graph = reg.graph(workflow_id)
+        cfg   = {"configurable": {"thread_id": thread_id}}
+        graph.update_state(cfg, {field: decision})
+        graph.invoke(None, cfg)
+        return _lg_response(workflow_id, thread_id, graph.get_state(cfg))
+
+
+def _lg_response(wf_id: str, thread_id: str, graph_state) -> dict:
+    """LangGraph fallback response format."""
     if graph_state.next:
         node = graph_state.next[0]
+        meta = reg.gate_meta(wf_id).get(node, {})
         return {
             "status":    "waiting_for_human",
             "workflow":  wf_id,
             "thread_id": thread_id,
-            "gate":      _gate_context(wf_id, graph_state.values, node),
+            "engine":    "langgraph",
+            "gate": {
+                "gate":    node,
+                "options": meta.get("options", []),
+                "field":   meta.get("output_field"),
+                "state":   {k: v for k, v in graph_state.values.items()
+                            if k in ("evidence", "assessment", "fix", "validation", "pr")},
+            },
         }
     return {
         "status":    "complete",
         "workflow":  wf_id,
         "thread_id": thread_id,
+        "engine":    "langgraph",
         "outcome":   graph_state.values.get("outcome"),
     }
-
-
-# ── Workflow runs ────────────────────────────────────────────────────────────
-
-@app.post("/api/run/{workflow_id}/{thread_id}")
-def run(workflow_id: str, thread_id: str, ticket: dict):
-    graph = reg.graph(workflow_id)
-    graph.invoke(ticket, _cfg(thread_id))
-    return _response(workflow_id, thread_id, graph.get_state(_cfg(thread_id)))
-
-
-@app.get("/api/state/{workflow_id}/{thread_id}")
-def get_state(workflow_id: str, thread_id: str):
-    graph = reg.graph(workflow_id)
-    state = graph.get_state(_cfg(thread_id))
-    if not state.values:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    return _response(workflow_id, thread_id, state)
-
-
-@app.post("/api/decision/{workflow_id}/{thread_id}")
-def submit_decision(workflow_id: str, thread_id: str, body: dict):
-    graph = reg.graph(workflow_id)
-    state = graph.get_state(_cfg(thread_id))
-    if not state.next:
-        raise HTTPException(status_code=400, detail="No pending gate")
-
-    node    = state.next[0]
-    meta    = reg.gate_meta(workflow_id).get(node, {})
-    options = meta.get("options", [])
-    field   = meta.get("output_field")
-    decision = body.get("decision")
-
-    if decision not in options:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid decision. Options: {options}")
-
-    value = (decision == "authorized") if field == "scope_authorized" else decision
-    graph.update_state(_cfg(thread_id), {field: value})
-    graph.invoke(None, _cfg(thread_id))
-    return _response(workflow_id, thread_id, graph.get_state(_cfg(thread_id)))
 
 
 # ── Registry APIs ────────────────────────────────────────────────────────────
@@ -316,29 +395,53 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
         "target_repo":        os.getenv("TARGET_REPO", "kim-codefresh/cf-api-test"),
     }
 
-    background_tasks.add_task(_start_workflow, "cve_remediation", thread_id, ticket)
+    background_tasks.add_task(_start_workflow_async, "cve_remediation", thread_id, ticket)
     return {"status": "accepted", "thread_id": thread_id, "ticket_id": identifier, "branch": branch_name}
 
 
-def _start_workflow(workflow_id: str, thread_id: str, ticket: dict):
+def _start_workflow_async(workflow_id: str, thread_id: str, ticket: dict):
+    """Start workflow — tries Temporal first, falls back to LangGraph."""
     try:
-        graph = reg.graph(workflow_id)
-        graph.invoke(ticket, {"configurable": {"thread_id": thread_id}})
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(_start_temporal(workflow_id, thread_id, ticket))
     except Exception as e:
-        print(f"[webhook] workflow error: {e}")
+        print(f"[webhook] Temporal failed, falling back to LangGraph: {e}")
+        try:
+            graph = reg.graph(workflow_id)
+            graph.invoke(ticket, {"configurable": {"thread_id": thread_id}})
+        except Exception as e2:
+            print(f"[webhook] LangGraph fallback also failed: {e2}")
+
+
+async def _start_temporal(workflow_id: str, thread_id: str, ticket: dict):
+    from temporal.workflow import HarnessWorkflow, WorkflowInput
+    client = await _get_temporal()
+    if not client:
+        raise RuntimeError("Temporal not available")
+    await client.start_workflow(
+        HarnessWorkflow.run,
+        WorkflowInput(workflow_id=workflow_id, initial_state=ticket, thread_id=thread_id),
+        id=thread_id,
+        task_queue=TEMPORAL_QUEUE,
+    )
+    _active_runs[thread_id] = {"status": "running", "workflow": workflow_id, "thread_id": thread_id}
+    print(f"[temporal] Started workflow {thread_id}")
 
 
 @app.get("/api/runs")
-def list_runs():
-    runs = {}
-    try:
-        for key, state in reg.checkpointer.storage.items():
-            if not state:
-                continue
-            tid = key[1][1] if len(key) > 1 and len(key[1]) > 1 else str(key)
-            runs[tid] = {"thread_id": tid}
-    except Exception:
-        pass
+async def list_runs():
+    """List active runs from Temporal + in-memory tracker."""
+    runs = dict(_active_runs)
+    client = await _get_temporal()
+    if client:
+        try:
+            async for wf in client.list_workflows(f"TaskQueue='{TEMPORAL_QUEUE}'"):
+                tid = wf.id
+                if tid not in runs:
+                    runs[tid] = {"thread_id": tid, "status": wf.status.name.lower()}
+        except Exception:
+            pass
     return runs
 
 

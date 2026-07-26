@@ -6,7 +6,7 @@ trigger:
     label: kim-test-harness
 
 steps:
-  # ── STEP 1: Agent investigates, finds and prepares the patch ─────────────
+  # ── AGENT 1: Research CVE, find patch, prepare all code changes ──────────
   - id: research
     agent:
       uses: research_cve
@@ -22,7 +22,7 @@ steps:
       escalate:       record
       fix_authorized: create_branch
 
-  # ── STEP 2: CODE — create branch in target repo ──────────────────────────
+  # ── CODE: create branch ───────────────────────────────────────────────────
   - id: create_branch
     deterministic:
       type: github_create_branch
@@ -30,14 +30,14 @@ steps:
       base_branch: master
     next: commit_files
 
-  # ── STEP 3: CODE — commit patched files ──────────────────────────────────
+  # ── CODE: commit patched files ────────────────────────────────────────────
   - id: commit_files
     deterministic:
       type: github_commit_files
       output_field: commit_result
     next: open_pr
 
-  # ── STEP 4: CODE — open PR + add label + comment /e2e ────────────────────
+  # ── CODE: open PR + security label + /e2e comment ────────────────────────
   - id: open_pr
     deterministic:
       type: github_open_pr
@@ -45,22 +45,50 @@ steps:
       base_branch: master
     next: validate_pr
 
-  # ── STEP 5: pr_validator agent — wait for checks + security scan ─────────
+  # ── AGENT 2: Wait for CI checks + Prisma scan, classify result ───────────
   - id: validate_pr
     agent:
       uses: pr_validator
-    next: pr_gate
+    next: route_after_validation
 
-  # ── GATE 2: Code owner reviews the PR ────────────────────────────────────
+  # ── CODE: route based on pr_validator exit ────────────────────────────────
+  # pr_validator sets failure_class — deterministic routing node reads it
+  - id: route_after_validation
+    gate:
+      output_field: validation_routing
+      options: [passed, ci_failed, scan_still_vulnerable, infra_flaky, unknown]
+    routes:
+      passed:               pr_gate
+      ci_failed:            research       # code issue → back to agent 1
+      scan_still_vulnerable: research      # version not enough → back to agent 1
+      infra_flaky:          validate_pr    # wait and retry agent 2
+      unknown:              diagnose       # mediator needed
+
+  # ── DIAGNOSE: lightweight mediator for unknown failures ───────────────────
+  - id: diagnose
+    agent:
+      uses: diagnose
+    next: route_after_diagnose
+
+  - id: route_after_diagnose
+    gate:
+      output_field: diagnose_routing
+      options: [research, validate_pr, human_gate]
+    routes:
+      research:     research
+      validate_pr:  validate_pr
+      human_gate:   pr_gate
+
+  # ── GATE 2: Code owner reviews PR ────────────────────────────────────────
   - id: pr_gate
     gate:
       output_field: pr_decision
       options: [approved, changes_requested]
     routes:
-      changes_requested: record
+      changes_requested: research
       approved:          merge_pr
 
-  # ── STEP 6: CODE — merge ─────────────────────────────────────────────────
+  # ── CODE: merge ───────────────────────────────────────────────────────────
   - id: merge_pr
     deterministic:
       type: merge_pr
