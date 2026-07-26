@@ -1,0 +1,54 @@
+harness/skills/poll_pr_checks.py
+  s_8c4312024059e4::t_dda855611bb8d9 1-103
+harness/skills/github_open_pr.py
+  s_8c4312024059e4::t_3e29e67f60fa2f 1-114
+harness/config/agents/diagnose.md
+  s_8c4312024059e4::t_7cdae6742e669e 1-42
+harness/config/workflows/cve_remediation.yaml
+  s_8c4312024059e4::t_54450256ee3d8a 4-6,9-10,12,15,19,21-23,25-31,33-34,36-37,40,43,45-51,54,61,63-64,70-85
+harness/skills/fetch_advisory.py
+  s_8c4312024059e4::t_d8715adb47de8a 1-68
+harness/config/agents/research_cve.md
+  s_8c4312024059e4::t_d7ddbb2df69b49 1-65
+harness/README.md
+  s_8c4312024059e4::t_b3c3e25bbfcfee 1-2,4-6,8,40-53,56-61,76-77,80-88,94,99-107,109-110,112-113,116,118,161,169,171,173,175,181,183,185,187,189,191,193-199,210,214-216,218-238
+  s_8c4312024059e4::t_630dffb5b58e4c 3,7,9-39,54-55,62-75,78-79,89-93,95-98,108,111,114-115,117,119-160,162-168,170,172,174,176-180,182,184,186,188,190,192,200-209,211-213,217
+harness/skills/github_create_branch.py
+  s_8c4312024059e4::t_389adac3a70d27 1-40
+harness/skills/github_commit_files.py
+  s_8c4312024059e4::t_72b862ccf9e97d 1-53
+harness/skills/find_and_patch_dependency.py
+  s_8c4312024059e4::t_657b87ab9ec5b8 1-175
+k8s/harness-deployment.yaml
+  s_8c4312024059e4::t_a44c338831d03b 40-41
+harness/skills/__init__.py
+  s_8c4312024059e4::t_a29b2fd2d804a9 1-2
+harness/step_types/__init__.py
+  s_8c4312024059e4::t_42c4859525f1aa 1-4,7-39,41,48-58
+harness/server.py
+  s_8c4312024059e4::t_978252711d09ae 304-309,311-316,320
+harness/skills/parse_cve_ticket.py
+  s_8c4312024059e4::t_8c5282a974ea6a 1-62
+harness/graph_builder.py
+  s_8c4312024059e4::t_8f93e518f9c183 49,55-56,63-103
+harness/skills/recall_past_cve.py
+  s_8c4312024059e4::t_7bbc10e4f869fc 1-93
+harness/config/agents/pr_validator.md
+  s_8c4312024059e4::t_5311a510f3f225 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "13f59ce774cbc041efeaffd8c07b064aa2d4ffd4",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
