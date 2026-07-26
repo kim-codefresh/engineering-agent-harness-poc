@@ -1,0 +1,50 @@
+harness/temporal/activities.py
+  s_8c4312024059e4::t_5c3d3f5d7519dc 1-123
+harness/temporal/worker.py
+  s_8c4312024059e4::t_9056af21d96ab7 1-47
+gitops/infra/vault/vault-setup.sh
+  s_8c4312024059e4::t_214e7dd0241db0 1-58
+gitops/infra/network-policies/research-cve-netpol.yaml
+  s_8c4312024059e4::t_384307bbca6873 1-26
+harness/temporal/__init__.py
+  s_8c4312024059e4::t_e87bafc80c73da 1
+k8s/temporal-worker-deployment.yaml
+  s_8c4312024059e4::t_3863e2eafcf3f7 1-56
+harness/temporal/workflow.py
+  s_8c4312024059e4::t_1c2ab8f1c51e88 1-24,32-159
+  s_8c4312024059e4::t_5d8d7f7c6b971f 25-31
+harness/requirements.txt
+  s_8c4312024059e4::t_32a0d0901d077a 6-9
+harness/config/workflows/cve_remediation.yaml
+  s_8c4312024059e4::t_ffb39e085a4c24 9,25,33,40,48,52,54-82,88,91
+harness/graph_builder.py
+  s_8c4312024059e4::t_b7b0634186d901 4-7,11-15,22,24-34,36,38-42,45-62,65-76,79-81,83-84,86-163,165-168,170,172-188,190-200,202-295,298-311,313,325-351
+  s_8c4312024059e4::t_75cd29776bf0a5 352-353
+gitops/infra/agent-jobs/research-cve-job.yaml
+  s_8c4312024059e4::t_db27831f7515b2 1-99
+harness/server.py
+  s_8c4312024059e4::t_591f31bec3ce5b 90-91,94,96-187,190-191,194,199-206,212
+  s_8c4312024059e4::t_0ae214ada47859 398,402-403,405-407,409-429,433-444
+  s_8c4312024059e4::t_1b8f0ddb13eaac 4-8,10,30-48
+  s_8c4312024059e4::t_428d1516c8e091 49
+gitops/infra/network-policies/README.md
+  s_8c4312024059e4::t_3d6b771e53e76e 1-23
+gitops/infra/agent-jobs/pr-validator-job.yaml
+  s_8c4312024059e4::t_f09d43e3299f0c 1-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f5fec2403bbb2980e32d5140cc89923d0d877775",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
