@@ -40,6 +40,10 @@ spec:
                 secretKeyRef:
                   name: github-credentials
                   key: GITHUB_TOKEN
+            - name: OPENHANDS_URL
+              value: "http://openhands.openhands.svc.cluster.local:3000"
+            - name: POSTGRES_URL
+              value: "postgresql://harness:harness@harness-postgres.agent-harness.svc.cluster.local:5432/harness"
             - name: LANGFUSE_HOST
               value: "http://langfuse.langfuse.svc.cluster.local:3000"
             - name: LANGFUSE_PUBLIC_KEY

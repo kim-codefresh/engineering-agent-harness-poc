@@ -25,41 +25,37 @@ tools:
   - recall_past_cve
   - parse_cve_ticket
   - fetch_advisory
-  - find_and_patch_dependency
+  - run_openhands
 ---
 
 # research_cve
 
-Investigates a CVE Linear ticket end-to-end: parses the vulnerability data, fetches advisory details, finds the affected dependency file in the repo, and produces a verified patch.
+Investigates a CVE Linear ticket end-to-end using OpenHands as the execution engine.
 
-## Loop behaviour
+## What OpenHands does
+OpenHands handles the full reasoning and execution loop:
+- Clones the repo
+- Reads the dependency files
+- Understands the CVE and what version to bump to
+- Applies the fix
+- Runs tests to verify
 
-The agent runs in a loop until it can produce one of three exit signals:
+Our runner calls OpenHands as a tool — we own budget enforcement, output validation, model escalation, and Langfuse tracing. OpenHands owns the internal code reasoning and execution.
 
-- **ready** — patch found, all CVEs addressed, `patches` array populated
-- **mitigation** — CVE cannot be fixed by a version bump (breaking change, no fix available), proposes a workaround
-- **retry_exhausted** — budget or retry limit hit before a confident result
+## Tool call sequence
 
-## Tool call sequence (typical)
-
-1. `recall_past_cve` — check if we've fixed this package before
-2. `parse_cve_ticket` — extract CVE JSON from ticket description
+1. `recall_past_cve` — check if we've fixed this package before (Postgres cross-run memory)
+2. `parse_cve_ticket` — extract CVE JSON from Linear ticket description
 3. `fetch_advisory` — enrich with NVD data and fix versions
-4. `find_and_patch_dependency` — clone repo, locate file, apply bump, return patch content
+4. `run_openhands` — delegate full fix preparation to OpenHands
 
-## Output fields
+## Fallback
+If OpenHands is unavailable, `run_openhands` falls back to `find_and_patch_dependency` (our own clone+patch skill) automatically.
 
-| Field | Type | Description |
-|---|---|---|
-| `patches` | list | Each patch: `{file, content, change, cve, strategy}` |
-| `vulnerabilities` | list | Enriched CVE objects with fix_version |
-| `branch_name` | str | `{ticket_id}-fix` |
-| `target_repo` | str | `kim-codefresh/cf-api-test` |
-| `pr_assessment` | str | One-paragraph human-readable summary for PR body |
-| `mitigation_details` | str | (mitigation path only) what to do instead |
-| `exhaustion_reason` | str | (retry_exhausted path only) why we gave up |
+## Output schema
 
-## Safety
-
-This agent reads repos and produces patch content. It does NOT call any GitHub write API.
-All GitHub writes happen in deterministic code steps after human approval.
+| Exit | Fields |
+|---|---|
+| `ready` | patches, all_patches_found, vulnerabilities, branch_name, target_repo, pr_assessment |
+| `mitigation` | mitigation_details, vulnerabilities |
+| `retry_exhausted` | exhaustion_reason |

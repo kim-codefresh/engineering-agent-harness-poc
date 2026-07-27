@@ -39,6 +39,10 @@ spec:
               value: "feat/full-cve-flow-human-gates-lift-and-shift"
             - name: TARGET_REPO
               value: "kim-codefresh/cf-api-test"
+            - name: OPENHANDS_URL
+              value: "http://openhands.openhands.svc.cluster.local:3000"
+            - name: POSTGRES_URL
+              value: "postgresql://harness:harness@harness-postgres:5432/harness"
             - name: LINEAR_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:

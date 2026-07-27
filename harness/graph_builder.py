@@ -231,11 +231,20 @@ def _build_llm_agent_node(agent_cfg: dict) -> callable:
             start_ms = time.time() * 1000
 
             try:
+                # Enable prompt caching where provider supports it
+                # Anthropic: explicit cache_control headers
+                # OpenAI GPT-4o+: automatic, no config needed
+                extra_kwargs = {}
+                if fallback_model and retries < fallback_after:
+                    extra_kwargs["fallbacks"] = [fallback_model]
+                if "anthropic" in use_model:
+                    extra_kwargs["cache"] = {"no-cache": False}  # allow caching
+
                 resp = litellm.completion(
                     model=use_model,
                     max_tokens=min(budget_tokens, 4096),
                     messages=trimmed,
-                    **({"fallbacks": [fallback_model]} if fallback_model and retries < fallback_after else {}),
+                    **extra_kwargs,
                 )
                 content = resp.choices[0].message.content
                 usage = {

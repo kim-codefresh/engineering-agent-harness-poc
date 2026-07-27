@@ -13,6 +13,7 @@ import github_commit_files as _commit_files
 import github_open_pr as _open_pr_skill
 import poll_pr_checks as _poll_checks
 import recall_past_cve as _recall_cve
+import run_openhands as _run_openhands
 
 
 def _comment_on_linear_execute(state, config):
@@ -55,5 +56,6 @@ REGISTRY = {
     "github_open_pr":            _Adapter(_open_pr_skill.execute),
     "poll_pr_checks":            _Adapter(_poll_checks.execute),
     "recall_past_cve":           _Adapter(_recall_cve.execute),
+    "run_openhands":             _Adapter(_run_openhands.execute),
     "comment_on_linear":         _CommentAdapter(),
 }
