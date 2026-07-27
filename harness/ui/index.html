@@ -251,8 +251,13 @@ function toast(msg,ok=true){
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   try {
-    const [wf,ag,st]=await Promise.all([api('GET','/api/workflows'),api('GET','/api/agents'),api('GET','/api/step-types')]);
-    S.workflows=wf; S.agents=ag; S.stepTypes=st;
+    const [wf,ag,st,runs]=await Promise.all([
+      api('GET','/api/workflows'),
+      api('GET','/api/agents'),
+      api('GET','/api/step-types'),
+      api('GET','/api/runs').catch(()=>({})),
+    ]);
+    S.workflows=wf; S.agents=ag; S.stepTypes=st; S.runs=runs;
     renderSidebar();
   } catch(e) { toast('Server not reachable',false); }
 }
@@ -524,12 +529,71 @@ function renderRuns(c) {
     c.innerHTML=`<div class="empty-state" id="empty-state"><strong>No active runs</strong><span>Trigger a workflow to start</span></div>`;
     return;
   }
-  c.innerHTML=`<div id="list-view"><div class="list-grid">${runs.map(r=>`
-    <div class="list-card" onclick="openRun('${r.thread_id}')">
-      <div class="list-card-name">${r.thread_id}</div>
-      <div class="list-card-meta">${r.workflow} · ${r.status}</div>
-      ${r.status==='waiting_for_human'?`<div style="margin-top:8px;font-size:11px;color:var(--amber)">⬟ Gate: ${r.gate?.gate||'?'}</div>`:''}
-    </div>`).join('')}</div></div>`;
+
+  const runCards = runs.map(r => {
+    const gate = r.pending_gate;
+    const isWaiting = gate && gate.field;
+    const shortId = r.thread_id.replace('cve_remediation-','').replace(/-\d+$/,'');
+
+    const gateSection = isWaiting ? `
+      <div style="margin-top:12px;background:var(--gate-bg);border:1px solid rgba(217,119,6,.3);border-radius:6px;padding:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--gate);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          ⬡ Gate: ${gate.gate} — waiting for your decision
+        </div>
+        ${gate.state?.assessment ? `
+          <div style="font-size:11px;color:var(--text-mid);margin-bottom:8px">
+            <strong>Affected:</strong> ${gate.state.assessment.affected ? 'Yes ⚠️' : 'No ✅'} ·
+            <strong>Risk:</strong> ${gate.state.assessment.risk_level || '—'} ·
+            <strong>Rec:</strong> ${gate.state.assessment.recommended_disposition || '—'}
+          </div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${(gate.options||[]).map((opt,i)=>`
+            <button class="btn ${i===0?'btn-primary':'btn-ghost'}"
+              style="font-size:11px;padding:5px 12px"
+              onclick="submitGateDecision('${r.thread_id}','${r.workflow||'cve_remediation'}','${gate.field}','${opt}')">
+              ${opt}
+            </button>`).join('')}
+        </div>
+      </div>` : '';
+
+    const statusColor = isWaiting ? 'var(--gate)' : r.status === 'running' ? 'var(--ok)' : 'var(--text-dim)';
+    const statusIcon  = isWaiting ? '⬡' : r.status === 'running' ? '⚡' : '✓';
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;box-shadow:var(--sh)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text)">${shortId}</div>
+        <span style="font-size:10px;color:${statusColor};font-weight:600">${statusIcon} ${r.status||'running'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${r.workflow||'cve_remediation'}</div>
+      ${gateSection}
+    </div>`;
+  }).join('');
+
+  c.innerHTML=`<div id="list-view" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:13px;font-weight:600">${runs.length} active run${runs.length!==1?'s':''}</span>
+      <button class="btn btn-ghost" style="font-size:11px" onclick="refreshRuns()">↺ Refresh</button>
+    </div>
+    ${runCards}
+  </div>`;
+}
+
+async function submitGateDecision(threadId, workflowId, field, decision) {
+  try {
+    await api('POST', `/api/decision/${workflowId}/${threadId}`, {field, decision});
+    // Clear pending gate from local state
+    if (S.runs[threadId]) S.runs[threadId].pending_gate = null;
+    toast(`Decision sent: ${decision}`);
+    setTimeout(() => { refreshRuns(); }, 1000);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function refreshRuns() {
+  try {
+    const runs = await api('GET', '/api/runs');
+    S.runs = runs;
+    if (S.view==='runs') renderMain();
+  } catch(e) {}
 }
 
 function renderStepType(c) {
@@ -738,4 +802,8 @@ async function submitPr() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 boot();
+// Auto-refresh runs every 10s when on runs view
+setInterval(async () => {
+  if (S.view === 'runs') await refreshRuns();
+}, 10000);
 </script>

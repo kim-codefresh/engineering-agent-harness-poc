@@ -1,6 +1,6 @@
 ---
 id: research_cve
-model: anthropic/claude-sonnet-4-6-20251001
+model: anthropic/claude-sonnet-4-6
 budget_tokens: 80000
 budget_seconds: 900
 retry_escalation:

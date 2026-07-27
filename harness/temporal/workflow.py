@@ -23,8 +23,10 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     import json
     from .activities import (
+        NotifyGateInput,
         RunAgentInput,
         RunCodeStepInput,
+        notify_gate_waiting,
         run_agent,
         run_code_step,
         load_workflow_config,
@@ -78,11 +80,11 @@ class HarnessWorkflow:
                 agent_name = agent_ref.get("uses") or agent_ref.get("id", "unknown")
                 result = await workflow.execute_activity(
                     run_agent,
-                    args=[RunAgentInput(
+                    RunAgentInput(
                         agent_id=agent_name,
                         state=state,
                         thread_id=input.thread_id,
-                    )],
+                    ),
                     start_to_close_timeout=timedelta(minutes=30),
                     retry_policy=RetryPolicy(
                         maximum_attempts=3,
@@ -96,12 +98,12 @@ class HarnessWorkflow:
                 cfg = step["deterministic"]
                 result = await workflow.execute_activity(
                     run_code_step,
-                    args=[RunCodeStepInput(
+                    RunCodeStepInput(
                         step_type=cfg["type"],
                         state=state,
                         config=cfg,
                         thread_id=input.thread_id,
-                    )],
+                    ),
                     start_to_close_timeout=timedelta(minutes=5),
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
@@ -110,11 +112,27 @@ class HarnessWorkflow:
 
             elif "gate" in step:
                 gate_cfg = step["gate"]
-                field = gate_cfg["output_field"]
+                field    = gate_cfg["output_field"]
+                options  = gate_cfg.get("options", [])
 
                 workflow.logger.info(
                     f"Gate '{step_id}' waiting for signal on field '{field}'. "
-                    f"Options: {gate_cfg.get('options', [])}"
+                    f"Options: {options}"
+                )
+
+                # Notify harness server so UI shows the gate
+                await workflow.execute_activity(
+                    notify_gate_waiting,
+                    NotifyGateInput(
+                        thread_id=input.thread_id,
+                        gate=step_id,
+                        field=field,
+                        options=options,
+                        state={k: v for k, v in state.items()
+                               if k in ("assessment", "vulnerabilities", "pr", "validation", "patches")},
+                    ),
+                    start_to_close_timeout=timedelta(seconds=10),
+                    retry_policy=RetryPolicy(maximum_attempts=1),
                 )
 
                 # Wait for human signal — Temporal pauses here durably
@@ -135,12 +153,12 @@ class HarnessWorkflow:
                     cfg = step["deterministic"]
                     result = await workflow.execute_activity(
                         run_code_step,
-                        args=[RunCodeStepInput(
+                        RunCodeStepInput(
                             step_type=cfg["type"],
                             state=state,
                             config=cfg,
                             thread_id=input.thread_id,
-                        )],
+                        ),
                         start_to_close_timeout=timedelta(minutes=5),
                     )
                     state.update(result)

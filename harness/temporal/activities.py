@@ -26,6 +26,15 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
 @dataclass
+class NotifyGateInput:
+    thread_id: str
+    gate: str
+    field: str
+    options: list
+    state: dict
+
+
+@dataclass
 class RunAgentInput:
     agent_id: str
     state: dict
@@ -40,8 +49,33 @@ class RunCodeStepInput:
     thread_id: str
 
 
-@activity.defn
-async def load_workflow_config(workflow_id: str) -> dict:
+@activity.defn(name="notify_gate_waiting")
+def notify_gate_waiting(input: NotifyGateInput) -> dict:
+    """Notify the harness server that a gate is waiting for human input."""
+    harness_url = os.getenv("HARNESS_URL", "http://agent-harness.agent-harness.svc.cluster.local:8000")
+    body = json.dumps({
+        "thread_id": input.thread_id,
+        "gate":      input.gate,
+        "field":     input.field,
+        "options":   input.options,
+        "state":     input.state,
+    }).encode()
+    req = urllib.request.Request(
+        f"{harness_url}/api/internal/gate-waiting",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        activity.logger.warning(f"Could not notify harness of gate: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@activity.defn(name="load_workflow_config")
+def load_workflow_config(workflow_id: str) -> dict:
     """Load workflow config from file. Durable — Temporal retries if it fails."""
     path = CONFIG_DIR / "workflows" / f"{workflow_id}.yaml"
     if not path.exists():
@@ -65,8 +99,8 @@ def _load_agent_config(agent_id: str) -> dict:
     raise FileNotFoundError(f"Agent config not found: {agent_id}")
 
 
-@activity.defn
-async def run_agent(input: RunAgentInput) -> dict:
+@activity.defn(name="run_agent")
+def run_agent(input: RunAgentInput) -> dict:
     """
     Run an LLM agent activity.
 
@@ -97,13 +131,12 @@ async def run_agent(input: RunAgentInput) -> dict:
 
     activity.heartbeat(f"Starting agent execution: {agent_id}")
     result = node_fn(input.state)
-
     activity.heartbeat(f"Agent complete: {agent_id}")
     return result
 
 
-@activity.defn
-async def run_code_step(input: RunCodeStepInput) -> dict:
+@activity.defn(name="run_code_step")
+def run_code_step(input: RunCodeStepInput) -> dict:
     """
     Run a deterministic code step activity.
 

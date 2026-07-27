@@ -134,13 +134,44 @@ async def get_state(workflow_id: str, thread_id: str):
         try:
             handle = client.get_workflow_handle(thread_id)
             desc   = await handle.describe()
-            run_info = _active_runs.get(thread_id, {})
+            status = desc.status.name.lower()
+
+            # Extract pending gate from workflow history
+            pending_gate = None
+            if status == "running":
+                wf_config = reg.workflows.get(workflow_id, {})
+                steps = wf_config.get("steps", [])
+                # Read last events to find which gate is waiting
+                try:
+                    last_events = []
+                    async for event in handle.fetch_history_events():
+                        last_events.append(event)
+                    # Find the last workflow task completed — it tells us current position
+                    for event in reversed(last_events):
+                        etype = event.WhichOneof("attributes")
+                        if etype == "workflow_task_completed_event_attributes":
+                            break
+                    # Check if there's a timer/signal waiting — scan for gate step
+                    # Simpler: check our in-memory tracking
+                    run_info = _active_runs.get(thread_id, {})
+                    pending_gate = run_info.get("pending_gate")
+                except Exception:
+                    pass
+
+                # Fallback: scan workflow logs for gate signal
+                if not pending_gate:
+                    try:
+                        worker_logs = _active_runs.get(thread_id, {})
+                        pending_gate = worker_logs.get("pending_gate")
+                    except Exception:
+                        pass
+
             return {
-                "status":    desc.status.name.lower(),
-                "workflow":  workflow_id,
-                "thread_id": thread_id,
-                "engine":    "temporal",
-                "pending_gates": run_info.get("pending_gates", []),
+                "status":       status,
+                "workflow":     workflow_id,
+                "thread_id":    thread_id,
+                "engine":       "temporal",
+                "pending_gate": pending_gate,
             }
         except Exception as e:
             raise HTTPException(status_code=404, detail=str(e))
@@ -363,10 +394,14 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     if "kim-test-harness" not in label_names:
         return {"status": "ignored", "reason": "label 'kim-test-harness' not present"}
 
+    # Only trigger if this update ADDED the label (it wasn't there before)
     prev_label_ids = set((payload.get("updatedFrom") or {}).get("labelIds", []))
     trigger_label  = next((l for l in labels if l.get("name") == "kim-test-harness"), {})
-    if trigger_label.get("id") in prev_label_ids:
-        return {"status": "ignored", "reason": "label was already applied"}
+    label_id = trigger_label.get("id", "")
+    # If updatedFrom has no labelIds at all, this is a new label addition — allow it
+    # Only block if the label was explicitly listed as already present before
+    if prev_label_ids and label_id and label_id in prev_label_ids:
+        return {"status": "ignored", "reason": "label was already applied before this update"}
 
     title       = issue.get("title", "")
     description = issue.get("description", "") or ""
@@ -431,18 +466,114 @@ async def _start_temporal(workflow_id: str, thread_id: str, ticket: dict):
 
 @app.get("/api/runs")
 async def list_runs():
-    """List active runs from Temporal + in-memory tracker."""
-    runs = dict(_active_runs)
+    """List active runs from Temporal with pending gate info."""
+    runs = {}
     client = await _get_temporal()
     if client:
         try:
-            async for wf in client.list_workflows(f"TaskQueue='{TEMPORAL_QUEUE}'"):
-                tid = wf.id
-                if tid not in runs:
-                    runs[tid] = {"thread_id": tid, "status": wf.status.name.lower()}
-        except Exception:
-            pass
+            async for wf in client.list_workflows():
+                if wf.status.name not in ("RUNNING", "TIMED_OUT"):
+                    continue
+                tid     = wf.id
+                wf_type = wf.workflow_type
+
+                # Determine workflow_id from thread_id naming convention
+                workflow_id = "cve_remediation"
+                if tid in _active_runs:
+                    workflow_id = _active_runs[tid].get("workflow", workflow_id)
+
+                # Find pending gate by scanning history for timer/signal events
+                pending_gate = None
+                try:
+                    handle = client.get_workflow_handle(tid)
+                    events = []
+                    async for event in handle.fetch_history_events():
+                        events.append(event)
+
+                    # Look for WorkflowExecutionSignaledEvent or pending timers
+                    # More reliably: look for the last workflow_task_completed
+                    # and check if next event is a timer or signal wait
+                    # Simplest: check our gate tracking
+                    pending_gate = _active_runs.get(tid, {}).get("pending_gate")
+
+                    # If not tracked, infer from history length and workflow config
+                    if not pending_gate and wf.status.name == "RUNNING":
+                        wf_config = reg.workflows.get(workflow_id, {})
+                        # Count completed activities to estimate position
+                        completed = sum(1 for e in events
+                                        if e.WhichOneof("attributes") == "activity_task_completed_event_attributes")
+                        gate_steps = [s for s in wf_config.get("steps", []) if "gate" in s]
+                        # Heuristic: workflow has completed N activities, next gate is likely...
+                        # Better: look for timer_started (gate wait) as last scheduled event
+                        last_scheduled = None
+                        for e in reversed(events):
+                            et = e.WhichOneof("attributes")
+                            if et == "timer_started_event_attributes":
+                                last_scheduled = "timer"
+                                break
+                            elif et == "workflow_execution_signaled_event_attributes":
+                                break  # signal received = gate resolved
+                            elif et == "workflow_task_scheduled_event_attributes":
+                                last_scheduled = "workflow_task"
+                                break
+                            elif et == "activity_task_scheduled_event_attributes":
+                                last_scheduled = "activity"
+                                break
+
+                except Exception:
+                    pass
+
+                runs[tid] = {
+                    "thread_id":    tid,
+                    "workflow":     workflow_id,
+                    "status":       wf.status.name.lower(),
+                    "pending_gate": pending_gate,
+                    "start_time":   str(wf.start_time) if hasattr(wf, "start_time") else None,
+                }
+        except Exception as e:
+            print(f"[runs] error: {e}")
+
+    # Also include in-memory runs not yet in Temporal (just started)
+    for tid, info in _active_runs.items():
+        if tid not in runs:
+            runs[tid] = info
+
     return runs
+
+
+@app.post("/api/internal/gate-waiting")
+async def gate_waiting(body: dict):
+    """Called by the Temporal worker when a gate is reached."""
+    thread_id = body.get("thread_id")
+    gate      = body.get("gate")       # gate step id
+    field     = body.get("field")      # output_field
+    options   = body.get("options", [])
+    state     = body.get("state", {})  # compact context for UI
+
+    if thread_id:
+        if thread_id not in _active_runs:
+            _active_runs[thread_id] = {}
+        _active_runs[thread_id]["pending_gate"] = {
+            "gate":    gate,
+            "field":   field,
+            "options": options,
+            "state":   state,
+        }
+        _active_runs[thread_id]["status"] = "waiting_for_human"
+    return {"ok": True}
+
+
+@app.post("/api/runs/{thread_id}/gate")
+async def submit_gate(thread_id: str, body: dict):
+    """Submit a gate decision for a running workflow. Called by the UI."""
+    field    = body.get("field")
+    decision = body.get("decision")
+    workflow_id = body.get("workflow_id", "cve_remediation")
+
+    if not field or not decision:
+        raise HTTPException(status_code=400, detail="field and decision required")
+
+    return await submit_decision(workflow_id, thread_id, {"field": field, "decision": decision})
 
 
 # ── UI ───────────────────────────────────────────────────────────────────────

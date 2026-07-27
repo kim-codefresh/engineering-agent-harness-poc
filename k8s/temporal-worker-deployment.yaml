@@ -29,7 +29,7 @@ spec:
             - name: TARGET_REPO
               value: "kim-codefresh/cf-api-test"
             - name: LITELLM_MODEL
-              value: "anthropic/claude-haiku-4-5-20251001"
+              value: "anthropic/claude-sonnet-4-6"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -40,6 +40,8 @@ spec:
                 secretKeyRef:
                   name: github-credentials
                   key: GITHUB_TOKEN
+            - name: HARNESS_URL
+              value: "http://agent-harness.agent-harness.svc.cluster.local:8000"
             - name: OPENHANDS_URL
               value: "http://openhands.openhands.svc.cluster.local:3000"
             - name: POSTGRES_URL

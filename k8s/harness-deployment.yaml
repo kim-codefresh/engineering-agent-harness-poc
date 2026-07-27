@@ -22,7 +22,7 @@ spec:
             - containerPort: 8000
           env:
             - name: LITELLM_MODEL
-              value: "anthropic/claude-haiku-4-5-20251001"
+              value: "anthropic/claude-sonnet-4-6"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
