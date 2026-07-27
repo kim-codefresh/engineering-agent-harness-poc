@@ -18,6 +18,18 @@ They need to be notified in the tools they already use (Linear).
 
 ---
 
+## 🐛 UI shows "running" when Temporal says "failed"
+
+The harness UI Runs view reads from `_active_runs` (in-memory dict set at workflow start).
+It never syncs back from Temporal, so a failed/cancelled workflow still shows as "running".
+
+**Fix needed:**
+- `/api/runs` already queries Temporal for real status — but the UI doesn't re-render
+  the status badge correctly when Temporal says FAILED/CANCELLED
+- `refreshRuns()` should update `S.runs` with the real Temporal status
+- Show a red "failed" badge + the failure reason (from Temporal history) on the run card
+- Auto-refresh should catch this within 10s
+
 ## 📋 Other things to come back to
 
 _Add more here as they come up_
