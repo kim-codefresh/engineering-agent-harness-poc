@@ -45,6 +45,18 @@ spec:
                   name: linear-credentials
                   key: LINEAR_WEBHOOK_SECRET
                   optional: true
+            - name: LINEAR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: linear-credentials
+                  key: LINEAR_API_KEY
+                  optional: true
+            - name: LINEAR_WORKSPACE
+              valueFrom:
+                secretKeyRef:
+                  name: linear-credentials
+                  key: LINEAR_WORKSPACE
+                  optional: true
 ---
 apiVersion: v1
 kind: Service
