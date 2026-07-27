@@ -1,0 +1,51 @@
+harness/temporal/workflow.py
+  s_8c4312024059e4::t_c9e7afa4a3850a 115-116,120-135
+  s_8c4312024059e4::t_1d2baf2bd5aaeb 83,87,101,106
+  s_8c4312024059e4::t_b988ad16fc706e 156,161
+  s_8c4312024059e4::t_2524ae31be0dcf 26,29
+k8s/harness-deployment.yaml
+  s_8c4312024059e4::t_f8e4a23bec0c6d 25
+harness/config/agents/research_cve.md
+  s_8c4312024059e4::t_e3a16ef58ecc95 3
+harness/temporal/activities.py
+  s_8c4312024059e4::t_99e6cb0840f754 138-139
+  s_8c4312024059e4::t_21106207d2335a 29-36
+  s_8c4312024059e4::t_ba7e77c783d289 77-78
+  s_8c4312024059e4::t_97616a14d46c3b 102-103
+  s_8c4312024059e4::t_7dac931204f864 52-76
+  s_8c4312024059e4::t_6e96b0b58914fb 28
+k8s/temporal-worker-deployment.yaml
+  s_8c4312024059e4::t_cc67646f85a690 32
+  s_8c4312024059e4::t_4053fe2b191c4a 43-44
+harness/temporal/worker.py
+  s_8c4312024059e4::t_ba4d2af4b32d21 8
+  s_8c4312024059e4::t_7cefb0226954dc 20
+  s_8c4312024059e4::t_694dd1b9f51d39 34-35,41
+  s_8c4312024059e4::t_49a4ba9dd9bf72 40
+harness/ui/index.html
+  s_8c4312024059e4::t_6abc0870d604c8 532-596
+  s_8c4312024059e4::t_447fbc40ac9946 254-260
+  s_8c4312024059e4::t_4d0cdd42d9c511 805-808
+harness/server.py
+  s_8c4312024059e4::t_3cc1a05baf1271 469-470,474-540,566-576
+  s_8c4312024059e4::t_4028acf1599472 137-168,170-174
+  s_8c4312024059e4::t_c95f1644b8f2cb 397,400-404
+  s_8c4312024059e4::t_4d4bb104f13b35 544-565
+  s_8c4312024059e4::t_1e1071c4068ec2 577-578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d69b70f1ff3d2c48cbc03e52f8c7d8c6440c02d3",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
