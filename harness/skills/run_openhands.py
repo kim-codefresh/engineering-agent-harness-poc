@@ -89,11 +89,12 @@ def execute(state: dict, config: dict) -> dict:
 
     print(f"[run_openhands] Starting conversation with model {model}")
 
-    # Create a conversation
+    import uuid
+    # Create a conversation — field names from OpenHands InitSessionRequest schema
     conv = _oh_request("POST", "/api/conversations", {
+        "conversation_id": str(uuid.uuid4()),
         "initial_user_msg": task,
-        "selected_repository": state.get("target_repo"),
-        "runtime_name": "local",
+        "repository": state.get("target_repo"),  # e.g. "kim-codefresh/cf-api-test"
     })
 
     conv_id  = conv.get("conversation_id") or conv.get("id")

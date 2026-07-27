@@ -21,7 +21,8 @@ def _ensure_label(repo: str, label: str, color: str = "e11d48"):
 
 
 def execute(state: dict, config: dict) -> dict:
-    repo = _require_kim_codefresh_repo()
+    target_repo = state.get("target_repo") or os.getenv("GITHUB_REPO", "")
+    repo = _require_kim_codefresh_repo(target_repo)
     branch_name = state.get("branch_name")
     base_branch = config.get("base_branch", "master")
     vulnerabilities = state.get("vulnerabilities", [])

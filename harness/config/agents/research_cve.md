@@ -3,6 +3,7 @@ id: research_cve
 model: anthropic/claude-sonnet-4-6
 budget_tokens: 80000
 budget_seconds: 900
+max_retries_before_human: 3
 retry_escalation:
   after_retries: 3
   escalate_to: anthropic/claude-opus-4-8
@@ -18,6 +19,10 @@ output_schema:
   mitigation:
     mitigation_details: str
     vulnerabilities: list
+  needs_human_guidance:
+    retry_count: int
+    last_failure: str
+    suggestion: str
   retry_exhausted:
     exhaustion_reason: str
 
@@ -25,37 +30,33 @@ tools:
   - recall_past_cve
   - parse_cve_ticket
   - fetch_advisory
-  - run_openhands
+  - find_and_patch_dependency
 ---
 
 # research_cve
 
-Investigates a CVE Linear ticket end-to-end using OpenHands as the execution engine.
+Investigates a CVE and prepares a fix **locally** — no GitHub writes during research. Only the deterministic code steps after this agent touch GitHub.
 
-## What OpenHands does
-OpenHands handles the full reasoning and execution loop:
-- Clones the repo
-- Reads the dependency files
-- Understands the CVE and what version to bump to
-- Applies the fix
-- Runs tests to verify
+## Local-only constraint
 
-Our runner calls OpenHands as a tool — we own budget enforcement, output validation, model escalation, and Langfuse tracing. OpenHands owns the internal code reasoning and execution.
+This agent clones repos locally, applies patches locally, and verifies locally. It never creates branches, opens PRs, or commits to GitHub. All GitHub writes happen in the deterministic code steps that follow.
 
-## Tool call sequence
+## Loop behaviour
 
-1. `recall_past_cve` — check if we've fixed this package before (Postgres cross-run memory)
-2. `parse_cve_ticket` — extract CVE JSON from Linear ticket description
-3. `fetch_advisory` — enrich with NVD data and fix versions
-4. `run_openhands` — delegate full fix preparation to OpenHands
+The agent retries internally. After `max_retries_before_human` failures, it exits with `needs_human_guidance` so a human can decide whether to continue, change approach, or escalate. After full budget exhaustion, exits with `retry_exhausted`.
 
-## Fallback
-If OpenHands is unavailable, `run_openhands` falls back to `find_and_patch_dependency` (our own clone+patch skill) automatically.
+## Exits
 
-## Output schema
+| Exit | Meaning | Next step |
+|---|---|---|
+| `ready` | Patch prepared and locally verified | `run_local_checks` code step |
+| `mitigation` | Can't auto-fix, proposes workaround | `comment_on_linear` |
+| `needs_human_guidance` | Struggling after N retries | `mid_retry_gate` human |
+| `retry_exhausted` | Budget fully used | `mark_linear_label` |
 
-| Exit | Fields |
-|---|---|
-| `ready` | patches, all_patches_found, vulnerabilities, branch_name, target_repo, pr_assessment |
-| `mitigation` | mitigation_details, vulnerabilities |
-| `retry_exhausted` | exhaustion_reason |
+## Tools
+
+- `recall_past_cve` — check Postgres for past fixes on this package
+- `parse_cve_ticket` — extract CVE JSON from Linear ticket
+- `fetch_advisory` — enrich from NVD, determine safe version
+- `find_and_patch_dependency` — clone repo locally, find dep file, produce patch content

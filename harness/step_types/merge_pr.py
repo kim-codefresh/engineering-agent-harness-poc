@@ -11,8 +11,8 @@ from .github_api import _require_kim_codefresh_repo, github_request
 
 
 def execute(state: dict, config: dict) -> dict:
-    # ── Safety gate — must be kim-codefresh repo ─────────────────────────────
-    repo = _require_kim_codefresh_repo()
+    target_repo = state.get("target_repo") or os.getenv("GITHUB_REPO", "")
+    repo = _require_kim_codefresh_repo(target_repo)
 
     pr = state.get("pr", {})
     pr_number = pr.get("number")

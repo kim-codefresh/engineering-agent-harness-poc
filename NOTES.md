@@ -30,6 +30,43 @@ It never syncs back from Temporal, so a failed/cancelled workflow still shows as
 - Show a red "failed" badge + the failure reason (from Temporal history) on the run card
 - Auto-refresh should catch this within 10s
 
+## 🔌 Port-forward keeps dropping
+
+`kubectl port-forward` drops on pod restarts and connection timeouts — breaks the cloudflared tunnel and webhook.
+
+**Fix:** Convert harness service to NodePort so cloudflared connects directly without port-forward:
+```bash
+kubectl -n agent-harness patch svc agent-harness -p '{"spec":{"type":"NodePort","ports":[{"port":8000,"targetPort":8000,"nodePort":30080}]}}'
+cloudflared tunnel --url http://localhost:30080
+```
+
+## 🚨 Gate shows no context — human can't make an informed decision
+
+The gate currently shows option buttons (fix_authorized / mitigation / escalate)
+with no context about what the agent actually found or proposed.
+
+**What it should show:**
+- CVE details: which package, current version, safe version
+- Agent assessment: affected? risk level? reasoning?
+- Agent proposal: ready → show the proposed diff + which file changes
+- Agent failure: mitigation → show why it failed + what manual action is needed
+- Stuck → show a text box to send instructions directly to the agent
+
+**Where the notification should go:** Linear comment on the ticket, with a link
+to the harness UI to make the decision. Not just in the harness UI.
+
+**"Jump in" option:** if agent is stuck/looping, human should be able to send
+a message directly into the agent's context to guide it.
+
+## 🐛 OpenHands POST /api/conversations returns 422
+
+Our request payload format doesn't match OpenHands API contract.
+Need to check OpenHands API docs and fix the `run_openhands.py` skill.
+OpenHands is reachable and running — just rejecting our payload format.
+
+Fix: check OpenHands API schema for `/api/conversations` and update
+`harness/skills/run_openhands.py` to match.
+
 ## 📋 Other things to come back to
 
 _Add more here as they come up_

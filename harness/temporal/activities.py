@@ -8,6 +8,8 @@ import json
 import os
 import sys
 import time
+import urllib.request
+import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,8 +53,12 @@ class RunCodeStepInput:
 
 @activity.defn(name="notify_gate_waiting")
 def notify_gate_waiting(input: NotifyGateInput) -> dict:
-    """Notify the harness server that a gate is waiting for human input."""
+    """Notify harness server AND post Linear comment when a gate is reached."""
     harness_url = os.getenv("HARNESS_URL", "http://agent-harness.agent-harness.svc.cluster.local:8000")
+    linear_api_key = os.getenv("LINEAR_API_KEY", "")
+    linear_workspace = os.getenv("LINEAR_WORKSPACE", "")
+
+    # 1. Notify harness server (for UI)
     body = json.dumps({
         "thread_id": input.thread_id,
         "gate":      input.gate,
@@ -68,10 +74,83 @@ def notify_gate_waiting(input: NotifyGateInput) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
-            return json.loads(r.read())
+            pass
     except Exception as e:
         activity.logger.warning(f"Could not notify harness of gate: {e}")
-        return {"ok": False, "error": str(e)}
+
+    # 2. Post Linear comment
+    if linear_api_key and input.state:
+        ticket_id = input.thread_id.split("-")[2].upper() + "-" + input.thread_id.split("-")[3] if "-" in input.thread_id else ""
+        assessment = input.state.get("assessment", {})
+        vulns = input.state.get("vulnerabilities", [])
+        vuln_line = ""
+        if vulns:
+            v = vulns[0]
+            vuln_line = f"\n- **Package:** `{v.get('packages')}@{v.get('packageVersion')}` → fix: `{v.get('fix_version')}`"
+
+        harness_ui_url = f"{harness_url.replace('svc.cluster.local','localhost').replace(':8000',':8000')}/index.html"
+
+        comment = f"""🤖 **Agent Harness — Gate: {input.gate}**
+
+The agent has completed its analysis and is waiting for your decision.
+{vuln_line}
+
+**Assessment:**
+- Affected: {'Yes ⚠️' if assessment.get('affected') else 'No ✅'}
+- Risk: {assessment.get('risk_level', '—').upper()}
+- Reasoning: {assessment.get('reasoning', '—')}
+- Agent recommends: `{assessment.get('recommended_disposition', '—')}`
+
+**Options:** {' | '.join(f'`{o}`' for o in input.options)}
+
+👉 [Make decision in Harness UI]({harness_ui_url}) → Runs tab → select your decision"""
+
+        # Find issue ID using ticket_id from state (set by webhook, workspace-agnostic)
+        ticket_id = input.state.get("ticket_id", "")
+        try:
+            query = json.dumps({
+                "query": "query FindIssue($id: String!) { issue(id: $id) { id identifier } }",
+                "variables": {"id": ticket_id}
+            }) if not ticket_id.startswith("har5") else json.dumps({
+                # Fallback: search by label kim-test-harness
+                "query": "{ issues(filter: {labels: {name: {eq: \"kim-test-harness\"}}}, first: 1) { nodes { id identifier } } }"
+            })
+            issues_req = urllib.request.Request(
+                "https://api.linear.app/graphql",
+                data=query.encode(),
+                headers={"Authorization": linear_api_key, "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(issues_req, timeout=5) as r:
+                issues_data = json.loads(r.read())
+            issue_id = None
+            # Try direct issue lookup first
+            direct = issues_data.get("data", {}).get("issue")
+            if direct and direct.get("id"):
+                issue_id = direct["id"]
+            else:
+                # Fallback: label search result
+                nodes = issues_data.get("data", {}).get("issues", {}).get("nodes", [])
+                if nodes:
+                    issue_id = nodes[0]["id"]
+
+            if issue_id:
+                # Use GraphQL variables to avoid string escaping issues
+                mutation = json.dumps({
+                    "query": "mutation CreateComment($issueId: String!, $body: String!) { commentCreate(input: {issueId: $issueId, body: $body}) { success } }",
+                    "variables": {"issueId": issue_id, "body": comment}
+                })
+                comment_req = urllib.request.Request(
+                    "https://api.linear.app/graphql",
+                    data=mutation.encode(),
+                    headers={"Authorization": linear_api_key, "Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(comment_req, timeout=5) as r:
+                    result = json.loads(r.read())
+                activity.logger.info(f"Posted Linear comment: {result}")
+        except Exception as e:
+            activity.logger.warning(f"Could not post Linear comment: {e}")
+
+    return {"ok": True}
 
 
 @activity.defn(name="load_workflow_config")

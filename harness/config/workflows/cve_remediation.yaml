@@ -6,90 +6,104 @@ trigger:
     label: kim-test-harness
 
 steps:
-  # ── AGENT 1: Research CVE, find patch, prepare all code changes ──────────
+  # ── AGENT 1: Research CVE locally — zero GitHub writes ───────────────────
   - id: research
     agent:
       uses: research_cve
-    next: security_gate
+    next: route_after_research
 
-  # ── GATE 1: Security owner reviews the proposed fix ──────────────────────
-  - id: security_gate
+  # ── Route based on agent 1 exit ──────────────────────────────────────────
+  - id: route_after_research
     gate:
-      output_field: disposition
-      options: [fix_authorized, mitigation, escalate]
+      output_field: research_exit
+      options: [ready, mitigation, needs_human_guidance, retry_exhausted]
     routes:
-      mitigation:     comment_mitigation
-      escalate:       record
-      fix_authorized: create_branch
+      ready:                run_local_checks
+      mitigation:           comment_mitigation
+      needs_human_guidance: mid_retry_gate
+      retry_exhausted:      mark_linear_label
 
-  # ── CODE: create branch ───────────────────────────────────────────────────
-  - id: create_branch
+  # ── HUMAN GATE: mid-retry check (fires after N failures) ─────────────────
+  - id: mid_retry_gate
+    gate:
+      output_field: mid_retry_decision
+      options: [continue, escalate]
+    routes:
+      continue:  research
+      escalate:  mark_linear_label
+
+  # ── CODE: run checks locally on the patch ────────────────────────────────
+  - id: run_local_checks
     deterministic:
-      type: github_create_branch
-      output_field: branch_result
+      type: run_local_checks
+      output_field: local_checks
       base_branch: master
-    next: commit_files
+    next: route_after_checks
 
-  # ── CODE: commit patched files ────────────────────────────────────────────
-  - id: commit_files
-    deterministic:
-      type: github_commit_files
-      output_field: commit_result
-    next: open_pr
+  - id: route_after_checks
+    gate:
+      output_field: local_checks_routing
+      options: [passed, failed]
+    routes:
+      failed: research
+      passed: open_prs
 
-  # ── CODE: open PR + security label + /e2e comment ────────────────────────
-  - id: open_pr
+  # ── CODE: open real PRs (1+ per affected repo) ───────────────────────────
+  - id: open_prs
     deterministic:
       type: github_open_pr
       output_field: pr
       base_branch: master
-    next: validate_pr
+    next: wait_for_checks
 
-  # ── AGENT 2: Wait for CI checks + Prisma scan, classify result ───────────
-  - id: validate_pr
-    agent:
-      uses: pr_validator
-    next: route_after_validation
+  # ── CODE: wait for CI checks + Prisma scan ───────────────────────────────
+  - id: wait_for_checks
+    deterministic:
+      type: poll_pr_checks
+      output_field: pr_checks
+      max_wait_seconds: 600
+    next: route_after_pr_checks
 
-  # ── CODE: route based on pr_validator exit ────────────────────────────────
-  # pr_validator sets failure_class — deterministic routing node reads it
-  - id: route_after_validation
+  - id: route_after_pr_checks
     gate:
-      output_field: validation_routing
-      options: [passed, ci_failed, scan_still_vulnerable, infra_flaky, unknown]
+      output_field: pr_checks_routing
+      options: [passed, failed]
     routes:
-      passed:               pr_gate
-      ci_failed:            research       # code issue → back to agent 1
-      scan_still_vulnerable: research      # version not enough → back to agent 1
-      infra_flaky:          validate_pr    # wait and retry agent 2
-      unknown:              diagnose       # mediator needed
+      failed: research
+      passed: trigger_e2e
 
-  # ── DIAGNOSE: lightweight mediator for unknown failures ───────────────────
-  - id: diagnose
-    agent:
-      uses: diagnose
-    next: route_after_diagnose
+  # ── CODE: trigger e2e suite ───────────────────────────────────────────────
+  - id: trigger_e2e
+    deterministic:
+      type: trigger_e2e
+      output_field: e2e_result
+    next: route_after_e2e
 
-  - id: route_after_diagnose
+  - id: route_after_e2e
     gate:
-      output_field: diagnose_routing
-      options: [research, validate_pr, human_gate]
+      output_field: e2e_routing
+      options: [passed, failed]
     routes:
-      research:     research
-      validate_pr:  validate_pr
-      human_gate:   pr_gate
+      failed: research
+      passed: assess_risk
 
-  # ── GATE 2: Code owner reviews PR ────────────────────────────────────────
+  # ── AGENT 2: Independent risk assessment ─────────────────────────────────
+  - id: assess_risk
+    agent:
+      uses: risk_assessor
+    next: pr_gate
+
+  # ── HUMAN GATE: review PR + risk assessment ───────────────────────────────
   - id: pr_gate
     gate:
       output_field: pr_decision
       options: [approved, changes_requested]
     routes:
       changes_requested: research
-      approved:          merge_pr
+      approved:          merge_prs
 
-  # ── CODE: merge ───────────────────────────────────────────────────────────
-  - id: merge_pr
+  # ── CODE: merge all PRs ───────────────────────────────────────────────────
+  - id: merge_prs
     deterministic:
       type: merge_pr
       output_field: pr
@@ -108,6 +122,21 @@ steps:
       options: [done, retry_agent]
     routes:
       done:        record
+      retry_agent: research
+
+  # ── RETRY EXHAUSTED PATH ──────────────────────────────────────────────────
+  - id: mark_linear_label
+    deterministic:
+      type: comment_on_linear
+      output_field: label_result
+    next: escalation_gate
+
+  - id: escalation_gate
+    gate:
+      output_field: escalation_decision
+      options: [close, retry_agent]
+    routes:
+      close:       record
       retry_agent: research
 
   # ── TERMINAL ──────────────────────────────────────────────────────────────

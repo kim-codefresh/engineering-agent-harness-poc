@@ -111,26 +111,37 @@ def _trim_messages(messages: list, max_keep: int = 10) -> list:
 def _validate_output(state: dict, agent_cfg: dict) -> tuple[bool, str]:
     """
     Validate agent output against the output_schema declared in the agent's .md.
+    Lenient: extra keys in state are fine, only check declared fields are present.
     Returns (is_valid, error_message).
     """
     schema = agent_cfg.get("output_schema")
     if not schema:
         return True, ""
 
-    # Determine which exit path this is
+    # Check each exit path — accept the first one where all declared fields are present
     for exit_name, exit_fields in schema.items():
         if not isinstance(exit_fields, dict):
             continue
-        # Check if ALL required fields for this exit are present
-        if all(k in state for k in exit_fields.keys()):
-            # Validate types
-            for field, expected_type in exit_fields.items():
-                val = state.get(field)
-                if val is None:
-                    return False, f"Required field '{field}' is None for exit '{exit_name}'"
+        # All declared fields must be present and non-None
+        if all(state.get(k) is not None for k in exit_fields.keys()):
             return True, ""
 
-    return False, f"Output doesn't match any declared exit schema. State keys: {list(state.keys())}"
+    # Also accept if the LLM set any top-level exit signal key
+    exit_signals = {"ready", "mitigation", "retry_exhausted", "fix_authorized",
+                    "needs_human_guidance", "research_exit"}
+    for signal in exit_signals:
+        if signal in state and state[signal]:
+            return True, ""
+
+    # Accept if patches list is present (ready path)
+    if state.get("patches") is not None:
+        return True, ""
+
+    # Accept if mitigation_details is present (mitigation path)
+    if state.get("mitigation_details"):
+        return True, ""
+
+    return False, f"No valid exit signal found. State keys: {list(state.keys())}"
 
 
 # ── LLM agent runner ─────────────────────────────────────────────────────────

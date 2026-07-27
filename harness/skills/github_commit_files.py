@@ -13,7 +13,8 @@ from step_types.github_api import _require_kim_codefresh_repo, github_request, g
 
 
 def execute(state: dict, config: dict) -> dict:
-    repo = _require_kim_codefresh_repo()
+    target_repo = state.get("target_repo") or os.getenv("GITHUB_REPO", "")
+    repo = _require_kim_codefresh_repo(target_repo)
     branch_name = state.get("branch_name")
     patches = state.get("patches", [])
     vulnerabilities = state.get("vulnerabilities", [])

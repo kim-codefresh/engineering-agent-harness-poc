@@ -13,9 +13,10 @@ import urllib.error
 import urllib.request
 
 
-def _require_kim_codefresh_repo() -> str:
+def _require_kim_codefresh_repo(repo: str = None) -> str:
     """Hard safety gate — call before every GitHub write operation."""
-    repo = os.getenv("GITHUB_REPO", "")
+    if not repo:
+        repo = os.getenv("GITHUB_REPO", "")
     if not repo.startswith("kim-codefresh/"):
         raise PermissionError(
             f"SAFETY BLOCK: GITHUB_REPO='{repo}' is not under kim-codefresh. "

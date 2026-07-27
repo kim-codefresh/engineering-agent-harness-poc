@@ -13,226 +13,173 @@ The harness is designed so that **adding a new workflow requires no Python** —
 │  HARNESS TEAM — written once, stable                         │
 │                                                              │
 │  Temporal Worker                                             │
-│    └─ HarnessWorkflow.py   generic YAML interpreter          │
-│    └─ activities/          run_agent · run_code_step · gate  │
+│    └─ HarnessWorkflow   generic YAML interpreter             │
+│    └─ activities/       run_agent · run_code_step · gate     │
 │                                                              │
-│  step_types/               skill library                     │
-│    call_llm · open_pr · wait_for_checks · trigger_e2e · ...  │
+│  step_types/ + skills/  capability library                   │
 └──────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────┐
 │  WORKFLOW DEVELOPER — YAML + .md only, no Python             │
 │                                                              │
-│  workflows/handle_incident/                                  │
-│    config.yaml             step sequence, gates, routing     │
-│    agents/                                                   │
-│      triage.md             prompt · tools · model · budget   │
-│      fix.md                                                  │
+│  config/workflows/cve_remediation.yaml  step sequence        │
+│  config/agents/research_cve.md          agent definition     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**The only time a developer touches Python** is when they need a brand new step type — a capability that doesn't exist yet (e.g. a PagerDuty integration). Once written, that step type is available to all future workflows forever.
-
 ---
 
-## The 2-agent CVE flow
+## The CVE flow — 2 agents
 
 ```
 [TRIGGER]
-CVE arrives in Linear
+CVE arrives in Linear (label: kim-test-harness)
         │
         ▼
 ┌─────────────────────────────────────────────────────┐
-│  AGENT 1 ○  research_cve                            │
-│  Investigates CVE, reads code, prepares fix,        │
-│  opens draft PR. Loops internally until done.       │
+│  AGENT 1 ○  research_cve  — LOCAL ONLY              │
+│  Researches CVE, prepares fix locally.              │
+│  Zero GitHub writes during research.                │
 │                                                     │
-│  Tools: GitHub · Codefresh Classic · Linear API     │
-│         curl · Cypress                              │
+│  Tools: gather_evidence · fetch_advisory            │
+│         find_and_patch_dependency (local clone)     │
+│         recall_past_cve                             │
 │                                                     │
 │  Exits:                                             │
-│    ready           → PR opened, fix prepared        │
-│    mitigation      → workaround only, no full fix   │
-│    retry exhausted → budget or retries used up      │
-└───────────┬──────────────┬──────────────────────────┘
-            │              │                │
-         ready          mitigation    retry exhausted
-            │              │                │
-            ▼              ▼                ▼
-    ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐
-    │  HUMAN ⬡     │  │  CODE △      │  │  CODE △         │
-    │ review draft │  │ comment on   │  │ mark_linear     │
-    │ PR           │  │ linear       │  │ _label          │
-    └──────┬───────┘  └──────┬───────┘  └────────┬────────┘
-    reject │                 ▼                    │
-     loops │          ┌──────────────┐      ┌─────┴──────────┐
-    agent 1│          │  HUMAN ⬡     │      │  HUMAN ⬡       │
-           │          │ in the loop  │      │  escalation    │
-           │          └──────┬───────┘      └──────┬─────────┘
-           │          reject │ loops         retry │  close
-           │          agent 1│               agent │     │
-           │                 │                   [a1]  done ⬡
-           ▼                 ▼
+│    ready              → local patch prepared        │
+│    mitigation         → workaround only             │
+│    needs_human_guide  → struggling after N retries  │
+│    retry_exhausted    → budget used up              │
+└──┬───────────┬──────────────┬───────────────────────┘
+   │           │              │
+ ready     mitigation   needs_human_guide / retry_exhausted
+   │           │              │
+   ▼           ▼              ▼
+[CODE △]   [CODE △]     [HUMAN ⬡]
+run_local  comment_on   mid-retry check
+_checks    linear       (continue | escalate)
+   │           │              │ continue     │ escalate
+   │ passed    │              └──→ agent1    │
+   ▼           ▼                            ▼
+[CODE △]   [HUMAN ⬡]                  [CODE △]
+open_prs   human in                   mark_linear
+(1+ PRs)   the loop                   _label
+   │       approve│reject→a1               │
+   ▼           ▼                      [HUMAN ⬡]
+[CODE △]   done ⬡                     escalation
+wait_for                               gate
+_checks                            retry│close
+   │ passed                         agent│  │
+   ▼                                  [a1] done ⬡
+[CODE △]
+trigger_e2e
+   │ passed
+   ▼
 ┌─────────────────────────────────────────────────────┐
-│  AGENT 2 ○  pr_validator                            │
-│  Waits for CI checks, triggers Cypress e2e,         │
-│  reports results.                                   │
-│                                                     │
-│  Tools: GitHub API · Cypress                        │
-│                                                     │
-│  Exits:                                             │
-│    passed  → all checks green, e2e green            │
-│    failed  → loops back to agent 1 to fix           │
-└───────────┬─────────────────────────────────────────┘
-            │ passed
-            ▼
-    ┌────────────────────────┐
-    │  CODE △                │
-    │  mark_ready_to_review  │
-    │  (Linear status)       │
-    └──────────┬─────────────┘
-               ▼
-    ┌────────────────────────┐
-    │  HUMAN ⬡               │
-    │  final PR review       │
-    └──────┬──────┬──────────┘
-    approve│      │reject → loops agent 1
-           ▼
-    ┌──────────────┐
-    │  CODE △      │
-    │  merge       │
-    │  (GitHub API)│
-    └──────┬───────┘
-           ▼
-        done ⬡
-     (human marks closed in Linear)
+│  AGENT 2 ○  risk_assessor  — INDEPENDENT            │
+│  Risk check on the fix. Separate from Agent 1        │
+│  to avoid bias. Not a code reviewer — a risk         │
+│  assessor.                                           │
+│                                                      │
+│  Checks: Is new version safe? New CVEs introduced?  │
+│  Breaking changes? Scan actually clean?             │
+└───────────────────────┬─────────────────────────────┘
+                        │
+                        ▼
+                [HUMAN ⬡]
+                review PR + risk
+                (PR links · CI · scan · risk assessment
+                 all in Linear comment)
+                approve│reject→loops agent1
+                        │ approve
+                        ▼
+                [CODE △] merge
+                        │
+                        ▼
+                      done ⬡
 ```
 
-**Symbols:** ○ Agent (LLM loop) · △ Code (deterministic) · ⬡ Human (person acts) · ◇ Gate (automated wait)
+**Symbols:** ○ Agent (LLM loop) · △ Code (deterministic) · ⬡ Human (person acts)
+
+---
+
+## What each step does
+
+| Step | Kind | What |
+|---|---|---|
+| `research_cve` | Agent 1 ○ | Research CVE locally — no GitHub writes |
+| `run_local_checks` | Code △ | Lint · tests · build · local scan on patch |
+| `open_prs` | Code △ | Create branches, commit, open PRs (1 per affected repo) |
+| `wait_for_checks` | Code △ | Poll CI + Prisma Cloud scan on all PRs |
+| `trigger_e2e` | Code △ | Comment `/e2e` on PRs, wait for Cypress results |
+| `risk_assessor` | Agent 2 ○ | Independent risk check — no bias from Agent 1 |
+| `review PR + risk` | Human ⬡ | Full context: PR links · CI · scan · risk |
+| `merge` | Code △ | Squash merge all PRs · update Linear |
+| `mid-retry check` | Human ⬡ | After N failures: continue \| escalate |
+| `comment_on_linear` | Code △ | Post mitigation details to Linear ticket |
+| `human in the loop` | Human ⬡ | Review mitigation: done \| retry agent |
+| `mark_linear_label` | Code △ | Add escalation label when budget exhausted |
+| `human escalation` | Human ⬡ | Final gate: retry \| close |
 
 ---
 
 ## How to add a new workflow
 
-No Python required. Create a directory under `workflows/`:
+No Python required. Create a YAML + agent `.md` files:
 
 ```
-workflows/handle_incident/
-  config.yaml           ← step sequence, gates, routing (see cve_remediation for reference)
-  agents/
-    triage.md           ← agent: prompt, tools, model, budget
-    fix.md
+config/workflows/my_workflow.yaml    ← step sequence + routing
+config/agents/my_agent.md           ← agent: prompt, tools, model, budget
 ```
 
-**Config YAML shape:**
-
-```yaml
-id: handle_incident
-trigger:
-  source: linear
-  event: incident.created
-
-steps:
-  - id: triage
-    agent:
-      uses: triage        # references agents/triage.md
-    next: review_gate
-
-  - id: review_gate
-    gate:
-      output_field: decision
-      options: [resolve, escalate]
-    routes:
-      resolve: fix
-      escalate: record
-
-  - id: fix
-    agent:
-      uses: fix
-    next: record
-
-  - id: record
-    deterministic:
-      type: update_linear_status
-      output_field: outcome
-```
-
-**If you need a step type that doesn't exist yet** (e.g. PagerDuty notification), add one Python file:
-
-```
-step_types/notify_pagerduty.py   ← implement execute(state, config) → dict
-```
-
-Register it in `step_types/__init__.py`. It's then available to all workflows by name.
+The only time Python is needed: adding a brand new step type. Once added to `step_types/` it's available to all workflows forever.
 
 ---
 
 ## The 4 pillars
 
 ### 1. Orchestration — Temporal
+Durable execution, workflow versioning (safe redeploys during active runs), built-in signals for human gates. `HarnessWorkflow` reads any `config.yaml` — workflow authors never touch Python.
 
-Temporal is the execution engine. It stores all workflow state durably, handles retries, enforces timeouts, and provides built-in signals for human gates. The harness runs a generic `HarnessWorkflow` class that reads the workflow `config.yaml` and executes each step — agent, code, or gate. Temporal replaces `graph_builder.py`, `MemorySaver`, and our custom gate server with battle-tested primitives.
+### 2. Agent Runner — custom + LiteLLM
+Custom runner owns: per-agent tool allowlist, Pydantic output validation, budget enforcement (tokens + time), model escalation (Sonnet → Opus after N retries via LiteLLM fallbacks). Langfuse traces every LLM call.
 
-Key properties:
-- Workflow state survives pod crashes and harness redeploys
-- Active runs are not broken by a new harness version (Temporal workflow versioning)
-- Human gates are Temporal signals — no custom HTTP endpoint needed
-- Full audit trail of every step, input, and output in Temporal's UI
-
-### 2. Agent Runner — custom + OpenHands for execution
-
-The runner gives each agent exactly the tools declared in its `.md`, enforces token and time budgets, validates typed output before passing downstream, and escalates the model (e.g. Sonnet → Fable) after N retries. For the steps that actually execute code in a repo (fix preparation, test running), OpenHands provides a battle-tested sandboxed execution environment rather than us rebuilding it.
-
-### 3. Context / Memory — typed state + prompt caching + LangGraph Store
-
-Within a run: LangGraph's typed state dict is the contract between agents. Agent 2 receives only the fields agent 1 declared as output — never the full conversation history. Anthropic prompt caching reduces token cost on repeated system prompts and advisory text. Across runs: LangGraph Store (Postgres-backed) lets agents recall past CVE patterns once enough runs exist to learn from.
+### 3. Context/Memory — typed state + Postgres
+Typed state dict is the contract between agents. Agent 2 only receives Agent 1's declared output fields — never the full conversation. Postgres stores cross-run memory (past CVE fixes per package).
 
 ### 4. Sandboxing — k8s Jobs + Vault + gVisor
-
-Each agent invocation runs as its own ephemeral k8s Job with its own service account — separate credentials per agent, not shared pod env vars. HashiCorp Vault issues dynamic short-lived tokens scoped to exactly what each agent needs (`research_cve` gets PR-write, `pr_validator` gets checks-read only). NetworkPolicy restricts egress to approved endpoints. gVisor adds kernel-level isolation for the code execution steps.
-
----
-
-## Repo map
-
-```
-harness/
-  HarnessWorkflow.py     Temporal workflow — reads config.yaml, executes steps
-  activities/            Temporal activities: run_agent · run_code_step · gate
-  step_types/            skill library — one file per capability
-    call_llm.py            LiteLLM (model-agnostic, supports escalation)
-    gather_evidence.py
-    open_pr.py             GitHub API (kim-codefresh org only)
-    merge_pr.py            GitHub API squash merge
-    wait_for_checks.py     polls GitHub PR checks
-    trigger_e2e.py         adds comment/label to trigger Cypress
-    github_api.py          shared helper + safety gate
-  config/
-    workflows/             workflow definitions — YAML only
-      cve_remediation.yaml
-    agents/                agent definitions — .md with YAML frontmatter
-      research_cve.md
-      pr_validator.md      (to be built)
-  ui/
-    index.html             pipeline view · gate decisions · YAML editor · propose-as-PR
-  README.md                this file
-```
+Each agent invocation runs as its own ephemeral k8s Job with its own service account and Vault-issued scoped credentials. NetworkPolicy restricts egress. gVisor for code execution steps (on real nodes).
 
 ---
 
 ## Running it
 
 ```bash
-# port-forward the harness
+# Port-forwards (keep all three open)
 kubectl -n agent-harness port-forward svc/agent-harness 8000:8000
+kubectl -n temporal    port-forward svc/temporal-ui    8088:8080
+kubectl -n langfuse    port-forward svc/langfuse        3001:3000
 
-# open the UI
-open http://localhost:8000
+# UIs
+open http://localhost:8000   # Harness UI — gate decisions, run workflows
+open http://localhost:8088   # Temporal UI — workflow history, step trace
+open http://localhost:3001   # Langfuse — LLM traces, cost, latency
 
-# or trigger via API
-curl -X POST localhost:8000/api/run/cve_remediation/my-run-id \
-  -H "Content-Type: application/json" \
-  -d @sample_cve.json
+# Trigger via webhook (or apply kim-test-harness label in Linear)
+kubectl exec -n agent-harness deployment/agent-harness -- python3 -c "
+import urllib.request, json, hmac, hashlib, os, time
+secret = os.getenv('LINEAR_WEBHOOK_SECRET', '').encode()
+body = json.dumps({'type':'Issue','action':'update',
+  'updatedFrom':{'labelIds':[]},
+  'data':{'id':f'test-{int(time.time())}','identifier':'HAR-5',
+    'title':'[Security] CVE-2026-3449',
+    'description':'{\"cve\":\"CVE-2026-3449\",\"packages\":\"fast-xml-parser\",\"packageVersion\":\"4.5.4\",\"status\":\"fixed in 5.5.6\"}',
+    'url':'https://linear.app','labels':[{'id':'l1','name':'kim-test-harness'}]}}).encode()
+sig = hmac.new(secret, body, hashlib.sha256).hexdigest()
+req = urllib.request.Request('http://localhost:8000/webhook/linear', data=body,
+  headers={'Content-Type':'application/json','linear-signature':sig})
+print(urllib.request.urlopen(req).read().decode())
+"
 ```
 
-See the root README for cluster setup.
+See NOTES.md for known issues and future work.

@@ -129,7 +129,8 @@ class HarnessWorkflow:
                         field=field,
                         options=options,
                         state={k: v for k, v in state.items()
-                               if k in ("assessment", "vulnerabilities", "pr", "validation", "patches")},
+                               if k in ("assessment", "vulnerabilities", "pr", "validation", "patches",
+                                        "ticket_id", "target_repo", "branch_name", "mitigation_details")},
                     ),
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=RetryPolicy(maximum_attempts=1),

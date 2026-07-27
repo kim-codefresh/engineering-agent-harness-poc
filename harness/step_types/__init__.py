@@ -14,6 +14,8 @@ import github_open_pr as _open_pr_skill
 import poll_pr_checks as _poll_checks
 import recall_past_cve as _recall_cve
 import run_openhands as _run_openhands
+import run_local_checks as _run_local_checks
+import trigger_e2e as _trigger_e2e
 
 
 def _comment_on_linear_execute(state, config):
@@ -57,5 +59,7 @@ REGISTRY = {
     "poll_pr_checks":            _Adapter(_poll_checks.execute),
     "recall_past_cve":           _Adapter(_recall_cve.execute),
     "run_openhands":             _Adapter(_run_openhands.execute),
+    "run_local_checks":          _Adapter(_run_local_checks.execute),
+    "trigger_e2e":               _Adapter(_trigger_e2e.execute),
     "comment_on_linear":         _CommentAdapter(),
 }
