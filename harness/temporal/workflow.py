@@ -108,7 +108,14 @@ class HarnessWorkflow:
                     retry_policy=RetryPolicy(maximum_attempts=3),
                 )
                 state.update(result)
-                current_id = step.get("next")
+                # Support both next: (simple) and routes: (conditional)
+                if "routes" in step:
+                    field = cfg.get("output_field", step_id + "_result")
+                    decision = state.get(field)
+                    current_id = step["routes"].get(decision)
+                    workflow.logger.info(f"Auto-route '{step_id}': {field}={decision} → {current_id}")
+                else:
+                    current_id = step.get("next")
 
             elif "gate" in step:
                 gate_cfg = step["gate"]
