@@ -168,12 +168,14 @@ def _build_llm_agent_node(agent_cfg: dict) -> callable:
     - Message trimming to prevent context overflow
     - Langfuse tracing for every LLM call and tool call
     """
-    agent_id      = agent_cfg.get("id", "unknown")
-    model         = agent_cfg.get("model", os.getenv("LITELLM_MODEL", "anthropic/claude-haiku-4-5-20251001"))
-    tools_allowed = agent_cfg.get("tools", [])
-    budget_tokens = agent_cfg.get("budget_tokens", 8192)
-    budget_secs   = agent_cfg.get("budget_seconds", 300)
-    escalation    = agent_cfg.get("retry_escalation", {})
+    agent_id       = agent_cfg.get("id", "unknown")
+    model          = agent_cfg.get("model", os.getenv("LITELLM_MODEL", "anthropic/claude-haiku-4-5-20251001"))
+    tools_allowed  = agent_cfg.get("tools", [])
+    budget_tokens  = agent_cfg.get("budget_tokens", 8192)
+    budget_secs    = agent_cfg.get("budget_seconds", 300)
+    max_retries    = agent_cfg.get("max_retries", 10)
+    max_cost_usd   = agent_cfg.get("max_cost_usd", None)
+    escalation     = agent_cfg.get("retry_escalation", {})
     fallback_model = escalation.get("escalate_to")
     fallback_after = escalation.get("after_retries", 3)
 
@@ -234,16 +236,27 @@ def _build_llm_agent_node(agent_cfg: dict) -> callable:
         ]
 
         # LLM call with budget enforcement, message trimming, and fallbacks
-        start_time = time.time()
-        retries = 0
-        result = {}
+        start_time  = time.time()
+        retries     = 0
+        total_cost  = 0.0
+        result      = {}
 
         while True:
             elapsed = time.time() - start_time
             if elapsed > budget_secs:
-                print(f"[{agent_id}] Budget exceeded: {elapsed:.0f}s > {budget_secs}s")
+                print(f"[{agent_id}] Time budget exceeded: {elapsed:.0f}s > {budget_secs}s")
                 return {**accumulated, "retry_exhausted": True,
                         "exhaustion_reason": f"Time budget exceeded ({elapsed:.0f}s)"}
+
+            if retries >= max_retries:
+                print(f"[{agent_id}] Max retries reached: {retries}/{max_retries}")
+                return {**accumulated, "retry_exhausted": True,
+                        "exhaustion_reason": f"Max retries ({max_retries}) reached"}
+
+            if max_cost_usd and total_cost >= max_cost_usd:
+                print(f"[{agent_id}] Cost budget exceeded: ${total_cost:.4f} > ${max_cost_usd}")
+                return {**accumulated, "retry_exhausted": True,
+                        "exhaustion_reason": f"Cost budget exceeded (${total_cost:.4f} of ${max_cost_usd})"}
 
             use_model = model
             if fallback_model and retries >= fallback_after:
@@ -274,6 +287,14 @@ def _build_llm_agent_node(agent_cfg: dict) -> callable:
                     "input":  resp.usage.prompt_tokens if resp.usage else 0,
                     "output": resp.usage.completion_tokens if resp.usage else 0,
                 }
+                # Track cumulative cost
+                try:
+                    call_cost = litellm.completion_cost(completion_response=resp)
+                    total_cost += call_cost
+                    print(f"[{agent_id}] call cost: ${call_cost:.4f} | total: ${total_cost:.4f} / ${max_cost_usd or '∞'}")
+                except Exception:
+                    pass
+                usage["cost_usd"] = total_cost
                 _trace_llm(trace, agent_id, use_model, trimmed, content, start_ms, usage)
 
                 # Parse JSON response

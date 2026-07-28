@@ -3,6 +3,8 @@ id: research_cve
 model: anthropic/claude-sonnet-4-6
 budget_tokens: 80000
 budget_seconds: 900
+max_retries: 5
+max_cost_usd: 0.50
 max_retries_before_human: 3
 retry_escalation:
   after_retries: 3

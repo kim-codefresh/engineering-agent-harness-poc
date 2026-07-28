@@ -3,6 +3,8 @@ id: risk_assessor
 model: anthropic/claude-haiku-4-5-20251001
 budget_tokens: 15000
 budget_seconds: 120
+max_retries: 2
+max_cost_usd: 0.05
 
 output_schema:
   result:
