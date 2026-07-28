@@ -110,8 +110,10 @@ class HarnessWorkflow:
                     ),
                     start_to_close_timeout=timedelta(minutes=30),
                     retry_policy=RetryPolicy(
-                        maximum_attempts=3,
-                        initial_interval=timedelta(seconds=5),
+                        maximum_attempts=0,  # unlimited — Temporal retries until fixed
+                        initial_interval=timedelta(seconds=10),
+                        maximum_interval=timedelta(minutes=5),
+                        backoff_coefficient=2.0,
                     ),
                 )
                 state.update(result)
@@ -119,17 +121,34 @@ class HarnessWorkflow:
 
             elif "deterministic" in step:
                 cfg = step["deterministic"]
-                result = await workflow.execute_activity(
-                    run_code_step,
-                    RunCodeStepInput(
-                        step_type=cfg["type"],
-                        state=state,
-                        config=cfg,
-                        thread_id=input.thread_id,
-                    ),
-                    start_to_close_timeout=timedelta(minutes=5),
-                    retry_policy=RetryPolicy(maximum_attempts=3),
-                )
+                try:
+                    result = await workflow.execute_activity(
+                        run_code_step,
+                        RunCodeStepInput(
+                            step_type=cfg["type"],
+                            state=state,
+                            config=cfg,
+                            thread_id=input.thread_id,
+                        ),
+                        start_to_close_timeout=timedelta(minutes=10),
+                        # Retry indefinitely with backoff — Temporal will keep trying
+                        # until the code is fixed and redeployed. This is the correct
+                        # Temporal pattern: activities should be retried, not workflows failed.
+                        retry_policy=RetryPolicy(
+                            maximum_attempts=0,  # 0 = unlimited
+                            initial_interval=timedelta(seconds=5),
+                            maximum_interval=timedelta(minutes=2),
+                            backoff_coefficient=2.0,
+                        ),
+                    )
+                except Exception as e:
+                    # If activity keeps failing after extended retries, route to escalation
+                    workflow.logger.error(f"Step '{step_id}' failed: {e}")
+                    state["step_failure"] = {"step": step_id, "error": str(e)[:300]}
+                    state["escalation_decision"] = "close"
+                    current_id = "escalation_gate"
+                    continue
+
                 state.update(result)
                 # Support both next: (simple) and routes: (conditional)
                 if "routes" in step:
