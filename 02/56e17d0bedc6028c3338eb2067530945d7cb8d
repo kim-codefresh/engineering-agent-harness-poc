@@ -1,0 +1,37 @@
+harness/step_types/__init__.py
+  s_8c4312024059e4::t_19292ba81324f1 23-93
+  s_8c4312024059e4::t_442232e2c25770 129
+  s_8c4312024059e4::t_9d2f7d6ccb81b4 18
+harness/Dockerfile
+  s_8c4312024059e4::t_44859f0971fa5a 7
+  s_8c4312024059e4::t_5b0c62c05ab57a 3-6
+harness/temporal/activities.py
+  s_8c4312024059e4::t_c207828e85fce6 214-237
+harness/skills/auto_route.py
+  s_8c4312024059e4::t_cc29611775f3ca 1-62
+harness/graph_builder.py
+  s_8c4312024059e4::t_45679e255112c1 136,138,143-153
+  s_8c4312024059e4::t_c1191031f37264 407-413
+NOTES.md
+  s_8c4312024059e4::t_f84a7a91cf7082 70-75
+k8s/temporal-worker-deployment.yaml
+  s_8c4312024059e4::t_58b06c20ccf131 45-56
+harness/config/workflows/cve_remediation.yaml
+  s_8c4312024059e4::t_78973b14f4eb97 9,13,15-18,20,27,42,44-47,49,51,54-69,77,83,85-88,90,93,95,100,102-105,107,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0256e17d0bedc6028c3338eb2067530945d7cb8d",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
