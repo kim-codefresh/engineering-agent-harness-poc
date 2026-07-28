@@ -23,10 +23,12 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     import json
     from .activities import (
+        NotifyFailureInput,
         NotifyGateInput,
         RunAgentInput,
         RunCodeStepInput,
         notify_gate_waiting,
+        notify_harness_failure,
         run_agent,
         run_code_step,
         load_workflow_config,
@@ -52,6 +54,27 @@ class HarnessWorkflow:
 
     @workflow.run
     async def run(self, input: WorkflowInput) -> dict:
+        try:
+            return await self._run(input)
+        except Exception as e:
+            # On any failure: notify Linear before propagating
+            try:
+                await workflow.execute_activity(
+                    notify_harness_failure,
+                    NotifyFailureInput(
+                        thread_id=input.thread_id,
+                        workflow_id=input.workflow_id,
+                        error=str(e)[:400],
+                        ticket_id=input.initial_state.get("ticket_id", ""),
+                    ),
+                    start_to_close_timeout=timedelta(seconds=15),
+                    retry_policy=RetryPolicy(maximum_attempts=1),
+                )
+            except Exception:
+                pass  # don't block on notification failure
+            raise
+
+    async def _run(self, input: WorkflowInput) -> dict:
         # Load workflow config (activity so it's durable and retryable)
         config = await workflow.execute_activity(
             load_workflow_config,

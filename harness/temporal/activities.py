@@ -28,6 +28,14 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
 @dataclass
+class NotifyFailureInput:
+    thread_id: str
+    workflow_id: str
+    error: str
+    ticket_id: str
+
+
+@dataclass
 class NotifyGateInput:
     thread_id: str
     gate: str
@@ -49,6 +57,66 @@ class RunCodeStepInput:
     state: dict
     config: dict
     thread_id: str
+
+
+@activity.defn(name="notify_harness_failure")
+def notify_harness_failure(input: NotifyFailureInput) -> dict:
+    """Post a Linear comment when the harness workflow fails."""
+    linear_api_key = os.getenv("LINEAR_API_KEY", "")
+    temporal_ui    = os.getenv("TEMPORAL_UI_URL", "http://localhost:8088")
+    harness_url    = os.getenv("HARNESS_URL", "http://agent-harness.agent-harness.svc.cluster.local:8000")
+
+    temporal_link = (
+        f"{temporal_ui}/namespaces/default/workflows"
+        f"/{input.workflow_id}"
+    )
+
+    body = (
+        f"🚨 **Agent Harness — Workflow Failed**\n\n"
+        f"**Thread:** `{input.thread_id}`\n"
+        f"**Error:** {input.error}\n\n"
+        f"👉 [View in Temporal UI]({temporal_link}) — see the full step history and failure reason\n"
+        f"👉 [Harness UI]({harness_url})\n\n"
+        f"*This is an automated notification from the agent harness.*"
+    )
+
+    if not linear_api_key:
+        activity.logger.warning(f"No LINEAR_API_KEY — cannot post failure comment for {input.ticket_id}")
+        return {"ok": False}
+
+    try:
+        # Find the issue
+        search = json.dumps({"query": "{ issues(first:20) { nodes { id identifier } } }"})
+        req = urllib.request.Request("https://api.linear.app/graphql",
+            data=search.encode(),
+            headers={"Authorization": linear_api_key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+        issue_id = None
+        for issue in data.get("data", {}).get("issues", {}).get("nodes", []):
+            if issue.get("identifier") == input.ticket_id:
+                issue_id = issue["id"]
+                break
+
+        if not issue_id:
+            activity.logger.warning(f"Issue {input.ticket_id} not found in Linear")
+            return {"ok": False}
+
+        mutation = json.dumps({
+            "query": "mutation($issueId: String!, $body: String!) { commentCreate(input: {issueId: $issueId, body: $body}) { success } }",
+            "variables": {"issueId": issue_id, "body": body}
+        })
+        req2 = urllib.request.Request("https://api.linear.app/graphql",
+            data=mutation.encode(),
+            headers={"Authorization": linear_api_key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req2, timeout=5) as r:
+            result = json.loads(r.read())
+        success = result.get("data", {}).get("commentCreate", {}).get("success", False)
+        activity.logger.info(f"Posted failure comment to {input.ticket_id}: {success}")
+        return {"ok": success}
+    except Exception as e:
+        activity.logger.warning(f"Failed to post Linear failure comment: {e}")
+        return {"ok": False, "error": str(e)}
 
 
 @activity.defn(name="notify_gate_waiting")

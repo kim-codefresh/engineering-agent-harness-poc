@@ -42,6 +42,8 @@ spec:
                   key: GITHUB_TOKEN
             - name: HARNESS_URL
               value: "http://agent-harness.agent-harness.svc.cluster.local:8000"
+            - name: TEMPORAL_UI_URL
+              value: "http://localhost:8088"
             - name: LINEAR_API_KEY
               valueFrom:
                 secretKeyRef:
