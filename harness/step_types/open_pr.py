@@ -19,7 +19,8 @@ from .github_api import (
 
 def execute(state: dict, config: dict) -> dict:
     # ── Safety gate — must be kim-codefresh repo ─────────────────────────────
-    repo = _require_kim_codefresh_repo()
+    target_repo = state.get("target_repo") or os.getenv("GITHUB_REPO", "")
+    repo = _require_kim_codefresh_repo(target_repo)
 
     fix      = state.get("fix", {})
     evidence = state.get("evidence", {})

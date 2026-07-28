@@ -58,7 +58,8 @@ def _find_security_scan_comment(repo: str, pr_number: int) -> dict:
 
 
 def execute(state: dict, config: dict) -> dict:
-    repo = _require_kim_codefresh_repo()
+    target_repo = state.get("target_repo") or os.getenv("GITHUB_REPO", "")
+    repo = _require_kim_codefresh_repo(target_repo)
     pr = state.get("pr", {})
     pr_number = pr.get("number")
     max_wait = config.get("max_wait_seconds", 600)
