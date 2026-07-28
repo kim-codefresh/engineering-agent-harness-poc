@@ -1,0 +1,21 @@
+harness/skills/poll_pr_checks.py
+  s_8c4312024059e4::t_56278e9b85a5bd 61-62
+harness/step_types/open_pr.py
+  s_8c4312024059e4::t_10524562717a62 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a6cfcd28a76a6634ea2835402a27cdcba28248bd",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
