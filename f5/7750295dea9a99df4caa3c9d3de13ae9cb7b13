@@ -1,0 +1,29 @@
+harness/temporal/workflow.py
+  s_8c4312024059e4::t_56bc878ce3ba90 57-77
+  s_8c4312024059e4::t_b112ba790d21ca 26,31
+harness/temporal/worker.py
+  s_8c4312024059e4::t_cf476db19c1756 20
+  s_8c4312024059e4::t_fee3092c1d7ba3 40
+harness/temporal/activities.py
+  s_8c4312024059e4::t_9e1c116a1a6485 31-37
+  s_8c4312024059e4::t_1bfea179cf2d56 62-121
+  s_8c4312024059e4::t_06139f32b588fe 30
+k8s/temporal-worker-deployment.yaml
+  s_8c4312024059e4::t_15ffd614a6ff25 45-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f57750295dea9a99df4caa3c9d3de13ae9cb7b13",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
