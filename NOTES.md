@@ -67,6 +67,12 @@ OpenHands is reachable and running — just rejecting our payload format.
 Fix: check OpenHands API schema for `/api/conversations` and update
 `harness/skills/run_openhands.py` to match.
 
+## 🐛 Re-applying same label doesn't trigger — ignored as duplicate
+
+When the label is already on the ticket and you remove+re-add it, Linear sends `updatedFrom.labelIds` containing the label ID, so our duplicate check blocks it.
+
+**Fix:** the duplicate check is too strict. Should only block if the label was present BEFORE this specific update event, not if it appeared in `updatedFrom` at all. Better approach: use a short-lived dedup cache (Redis or in-memory with TTL) keyed on `(ticket_id, label_id, timestamp)` rather than checking `updatedFrom`.
+
 ## 📋 Other things to come back to
 
 _Add more here as they come up_

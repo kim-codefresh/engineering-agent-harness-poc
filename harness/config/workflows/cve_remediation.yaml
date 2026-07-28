@@ -6,24 +6,25 @@ trigger:
     label: kim-test-harness
 
 steps:
-  # ── AGENT 1: Research CVE locally — zero GitHub writes ───────────────────
+  # ── AGENT 1: Research CVE locally ────────────────────────────────────────
   - id: research
     agent:
       uses: research_cve
-    next: route_after_research
+    next: route_research
 
-  # ── Route based on agent 1 exit ──────────────────────────────────────────
-  - id: route_after_research
-    gate:
+  # ── AUTO-ROUTE: maps agent output → research_exit ─────────────────────────
+  - id: route_research
+    deterministic:
+      type: auto_route
       output_field: research_exit
-      options: [ready, mitigation, needs_human_guidance, retry_exhausted]
+      route_type: research
     routes:
       ready:                run_local_checks
       mitigation:           comment_mitigation
       needs_human_guidance: mid_retry_gate
       retry_exhausted:      mark_linear_label
 
-  # ── HUMAN GATE: mid-retry check (fires after N failures) ─────────────────
+  # ── HUMAN GATE: mid-retry check (fires after N agent failures) ────────────
   - id: mid_retry_gate
     gate:
       output_field: mid_retry_decision
@@ -38,17 +39,34 @@ steps:
       type: run_local_checks
       output_field: local_checks
       base_branch: master
-    next: route_after_checks
+    next: route_checks
 
-  - id: route_after_checks
-    gate:
+  # ── AUTO-ROUTE: maps check result → routing ───────────────────────────────
+  - id: route_checks
+    deterministic:
+      type: auto_route
       output_field: local_checks_routing
-      options: [passed, failed]
+      route_type: checks
     routes:
+      passed: create_branch
       failed: research
-      passed: open_prs
 
-  # ── CODE: open real PRs (1+ per affected repo) ───────────────────────────
+  # ── CODE: create branch in GitHub ─────────────────────────────────────────
+  - id: create_branch
+    deterministic:
+      type: github_create_branch
+      output_field: branch_result
+      base_branch: master
+    next: commit_files
+
+  # ── CODE: commit patched files ────────────────────────────────────────────
+  - id: commit_files
+    deterministic:
+      type: github_commit_files
+      output_field: commit_result
+    next: open_prs
+
+  # ── CODE: open draft PRs ──────────────────────────────────────────────────
   - id: open_prs
     deterministic:
       type: github_open_pr
@@ -56,36 +74,40 @@ steps:
       base_branch: master
     next: wait_for_checks
 
-  # ── CODE: wait for CI checks + Prisma scan ───────────────────────────────
+  # ── CODE: wait for CI + Prisma scan ──────────────────────────────────────
   - id: wait_for_checks
     deterministic:
       type: poll_pr_checks
       output_field: pr_checks
       max_wait_seconds: 600
-    next: route_after_pr_checks
+    next: route_pr_checks
 
-  - id: route_after_pr_checks
-    gate:
+  # ── AUTO-ROUTE: maps CI result → routing ─────────────────────────────────
+  - id: route_pr_checks
+    deterministic:
+      type: auto_route
       output_field: pr_checks_routing
-      options: [passed, failed]
+      route_type: pr_checks
     routes:
-      failed: research
       passed: trigger_e2e
+      failed: research
 
-  # ── CODE: trigger e2e suite ───────────────────────────────────────────────
+  # ── CODE: trigger e2e ─────────────────────────────────────────────────────
   - id: trigger_e2e
     deterministic:
       type: trigger_e2e
       output_field: e2e_result
-    next: route_after_e2e
+    next: route_e2e
 
-  - id: route_after_e2e
-    gate:
+  # ── AUTO-ROUTE: maps e2e result → routing ────────────────────────────────
+  - id: route_e2e
+    deterministic:
+      type: auto_route
       output_field: e2e_routing
-      options: [passed, failed]
+      route_type: e2e
     routes:
-      failed: research
       passed: assess_risk
+      failed: research
 
   # ── AGENT 2: Independent risk assessment ─────────────────────────────────
   - id: assess_risk

@@ -133,12 +133,24 @@ def _validate_output(state: dict, agent_cfg: dict) -> tuple[bool, str]:
         if signal in state and state[signal]:
             return True, ""
 
-    # Accept if patches list is present (ready path)
+    # Accept if patches list is present (ready path) — auto-set research_exit
     if state.get("patches") is not None:
+        state["research_exit"] = "ready"
         return True, ""
 
     # Accept if mitigation_details is present (mitigation path)
     if state.get("mitigation_details"):
+        state["research_exit"] = "mitigation"
+        return True, ""
+
+    # Accept if needs_human_guidance is present
+    if state.get("needs_human_guidance"):
+        state["research_exit"] = "needs_human_guidance"
+        return True, ""
+
+    # Accept if retry_exhausted is present
+    if state.get("retry_exhausted"):
+        state["research_exit"] = "retry_exhausted"
         return True, ""
 
     return False, f"No valid exit signal found. State keys: {list(state.keys())}"
@@ -392,7 +404,13 @@ def build_graph(workflow_config: dict, agent_registry: dict) -> tuple:
     for step in workflow_config["steps"]:
         step_id = step["id"]
         if "routes" in step:
-            field = step["gate"]["output_field"]
+            # Support routes on both gate steps and deterministic steps
+            if "gate" in step:
+                field = step["gate"]["output_field"]
+            elif "deterministic" in step:
+                field = step["deterministic"].get("output_field", step["id"] + "_result")
+            else:
+                field = step.get("output_field", step_id)
             graph.add_conditional_edges(
                 step_id,
                 lambda state, f=field: state.get(f),

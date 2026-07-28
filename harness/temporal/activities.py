@@ -211,6 +211,30 @@ def run_agent(input: RunAgentInput) -> dict:
     activity.heartbeat(f"Starting agent execution: {agent_id}")
     result = node_fn(input.state)
     activity.heartbeat(f"Agent complete: {agent_id}")
+
+    # Auto-set routing signal fields so workflow gates can route correctly
+    if agent_id == "research_cve" and "research_exit" not in result:
+        if result.get("patches") is not None and result.get("all_patches_found"):
+            result["research_exit"] = "ready"
+        elif result.get("mitigation_details"):
+            result["research_exit"] = "mitigation"
+        elif result.get("needs_human_guidance"):
+            result["research_exit"] = "needs_human_guidance"
+        elif result.get("retry_exhausted"):
+            result["research_exit"] = "retry_exhausted"
+        else:
+            # Default: needs human guidance if nothing clear
+            result["research_exit"] = "needs_human_guidance"
+            if "needs_human_guidance" not in result:
+                result["needs_human_guidance"] = {
+                    "last_failure": str(result.get("find_and_patch_dependency_error", "unknown")),
+                    "suggestion": "Check agent output and retry"
+                }
+        activity.logger.info(f"Auto-set research_exit={result['research_exit']}")
+
+    if agent_id == "risk_assessor" and "risk_assessment" not in result:
+        result["risk_assessment"] = result.get("agent_response", result)
+
     return result
 
 
