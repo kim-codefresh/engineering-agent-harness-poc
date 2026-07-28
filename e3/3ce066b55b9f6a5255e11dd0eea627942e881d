@@ -1,0 +1,27 @@
+harness/config/agents/risk_assessor.md
+  s_8c4312024059e4::t_ac0ecfcd9fe249 6-7
+harness/graph_builder.py
+  s_8c4312024059e4::t_1fec2b32677f7e 290-297
+  s_8c4312024059e4::t_97210e424abe8c 239-242
+  s_8c4312024059e4::t_e3a1f1e5ff8d43 171-178
+  s_8c4312024059e4::t_7faa062a45598b 247,251-259
+  s_8c4312024059e4::t_ad8121a87da7c9 260
+harness/config/agents/research_cve.md
+  s_8c4312024059e4::t_155e21a2825e06 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e33ce066b55b9f6a5255e11dd0eea627942e881d",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
