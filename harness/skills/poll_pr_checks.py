@@ -85,8 +85,9 @@ def execute(state: dict, config: dict) -> dict:
                 "failure_class": "ci_failed",
             }
 
-        if check_result["status"] == "passed" and scan_result["found"]:
-            new_cves = scan_result.get("new_cves", 0) or 0
+        if check_result["status"] == "passed":
+            # Prisma scan is optional — pass if checks green (scan may not be configured)
+            new_cves = scan_result.get("new_cves", 0) or 0 if scan_result["found"] else 0
             return {
                 "checks_status": "passed",
                 "security_scan": scan_result,

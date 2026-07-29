@@ -29,13 +29,17 @@ def route_checks(state: dict, config: dict) -> dict:
 
 def route_pr_checks(state: dict, config: dict) -> dict:
     """Map poll_pr_checks output → pr_checks_routing."""
+    # poll_pr_checks returns checks_status directly into state
+    status = state.get("checks_status", "")
+    fc     = state.get("failure_class", "")
+    if fc == "infra_flaky":
+        return {"pr_checks_routing": "passed"}
+    if status == "passed":
+        return {"pr_checks_routing": "passed"}
+    # Also check nested pr_checks dict (fallback)
     checks = state.get("pr_checks", {})
-    if isinstance(checks, dict):
-        fc = checks.get("failure_class")
-        if fc in ("infra_flaky",):
-            return {"pr_checks_routing": "passed"}   # retry pr_validator
-        if checks.get("checks_status") == "passed":
-            return {"pr_checks_routing": "passed"}
+    if isinstance(checks, dict) and checks.get("checks_status") == "passed":
+        return {"pr_checks_routing": "passed"}
     return {"pr_checks_routing": "failed"}
 
 

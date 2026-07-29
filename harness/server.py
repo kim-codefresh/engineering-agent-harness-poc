@@ -383,6 +383,7 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
             raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload = json.loads(body)
+    print(f"[webhook] type={payload.get('type')} action={payload.get('action')} labels={[l.get('name') for l in (payload.get('data') or {}).get('labels', [])]}")
 
     if payload.get("type") != "Issue":
         return {"status": "ignored", "reason": "not an Issue event"}
@@ -391,17 +392,11 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     labels       = issue.get("labels", [])
     label_names  = [l.get("name", "") for l in labels]
 
-    if "kim-test-harness" not in label_names:
+    if "kim-test-harness" not in label_names and "kim-harness-test" not in label_names:
         return {"status": "ignored", "reason": "label 'kim-test-harness' not present"}
 
-    # Only trigger if this update ADDED the label (it wasn't there before)
-    prev_label_ids = set((payload.get("updatedFrom") or {}).get("labelIds", []))
-    trigger_label  = next((l for l in labels if l.get("name") == "kim-test-harness"), {})
-    label_id = trigger_label.get("id", "")
-    # If updatedFrom has no labelIds at all, this is a new label addition — allow it
-    # Only block if the label was explicitly listed as already present before
-    if prev_label_ids and label_id and label_id in prev_label_ids:
-        return {"status": "ignored", "reason": "label was already applied before this update"}
+    # No duplicate check — thread_id includes timestamp so each trigger is unique.
+    # Temporal handles dedup at the workflow level (each thread_id is a separate run).
 
     title       = issue.get("title", "")
     description = issue.get("description", "") or ""
