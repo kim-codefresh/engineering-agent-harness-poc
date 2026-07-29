@@ -22,9 +22,15 @@ def execute(state: dict, config: dict) -> dict:
 
     print(f"[merge_pr] Merging PR #{pr_number} in {repo} via squash...")
 
+    # Check if already merged
+    pr_data = github_request("GET", f"/repos/{repo}/pulls/{pr_number}")
+    if pr_data and pr_data.get("state") == "closed" and pr_data.get("merged"):
+        print(f"[merge_pr] PR #{pr_number} already merged — skipping")
+        return {config.get("output_field", "pr"): {**pr, "status": "merged", "merge_sha": pr_data.get("merge_commit_sha")}}
+
     result = github_request("PUT", f"/repos/{repo}/pulls/{pr_number}/merge", {
         "commit_title":   f"fix: {pr.get('title', f'PR #{pr_number}')}",
-        "commit_message": f"Merged by agent-harness after human approval.",
+        "commit_message": "Merged by agent-harness after human approval.",
         "merge_method":   "squash",
     })
 

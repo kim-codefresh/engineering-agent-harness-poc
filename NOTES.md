@@ -73,6 +73,16 @@ When the label is already on the ticket and you remove+re-add it, Linear sends `
 
 **Fix:** the duplicate check is too strict. Should only block if the label was present BEFORE this specific update event, not if it appeared in `updatedFrom` at all. Better approach: use a short-lived dedup cache (Redis or in-memory with TTL) keyed on `(ticket_id, label_id, timestamp)` rather than checking `updatedFrom`.
 
+## 🐛 Multiple workflows receive gate signals simultaneously
+
+When multiple workflows are running (e.g. from retries or duplicate triggers),
+broadcasting a gate signal to "all running workflows" causes all of them to proceed
+and potentially open duplicate PRs.
+
+Fix: gate signals should target a specific thread_id, not broadcast to all.
+The harness UI and Linear comment should include the specific thread_id in the
+decision link so humans signal the correct workflow only.
+
 ## 📋 Other things to come back to
 
 _Add more here as they come up_
