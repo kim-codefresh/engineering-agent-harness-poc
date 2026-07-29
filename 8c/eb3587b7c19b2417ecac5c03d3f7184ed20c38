@@ -1,0 +1,26 @@
+harness/step_types/record_outcome.py
+  s_8c4312024059e4::t_ef6eeb67f51cc7 1-17,20-87
+harness/skills/trigger_e2e.py
+  s_8c4312024059e4::t_c9228f4c2d8cab 55
+  s_8c4312024059e4::t_0042b3c4f1871a 73-75
+harness/step_types/merge_pr.py
+  s_8c4312024059e4::t_9ea9501482eb0e 25-30,33
+NOTES.md
+  s_8c4312024059e4::t_326073e588f50c 76-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8ceb3587b7c19b2417ecac5c03d3f7184ed20c38",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
