@@ -89,6 +89,7 @@ reg = Registry()
 
 # In-memory run tracker (Temporal is authoritative; this is for the UI)
 _active_runs: dict = {}
+_recent_triggers: dict = {}  # ticket_id → last_trigger_timestamp (dedup cache)
 
 
 # ── Temporal workflow execution ───────────────────────────────────────────────
@@ -395,8 +396,12 @@ async def linear_webhook(request: Request, background_tasks: BackgroundTasks):
     if "kim-test-harness" not in label_names and "kim-harness-test" not in label_names:
         return {"status": "ignored", "reason": "label 'kim-test-harness' not present"}
 
-    # No duplicate check — thread_id includes timestamp so each trigger is unique.
-    # Temporal handles dedup at the workflow level (each thread_id is a separate run).
+    # Dedup: same ticket can only trigger once per 5 minutes
+    now = time.time()
+    last = _recent_triggers.get(identifier, 0)
+    if now - last < 300:  # 5 minutes
+        return {"status": "ignored", "reason": f"triggered too recently ({int(now-last)}s ago) — wait 5 min"}
+    _recent_triggers[identifier] = now
 
     title       = issue.get("title", "")
     description = issue.get("description", "") or ""
