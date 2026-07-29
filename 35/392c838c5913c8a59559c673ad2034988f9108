@@ -1,0 +1,33 @@
+harness/temporal/workflow.py
+  s_8c4312024059e4::t_ff88b2160c31fd 2-9,14,18,25,28,31,36-37,51,59,64,72,80,87-88,95,101,105-111,113-114,116,118-126,128,134,136,145-147,149,153,159,164,168-229,239-242,245-252,254-304,308,311-319,321-322
+harness/server.py
+  s_8c4312024059e4::t_0f4e129a588135 566-593
+harness/ui/index.html
+  s_8c4312024059e4::t_09e89017906284 588
+  s_8c4312024059e4::t_2228490cda3f26 538-557
+  s_8c4312024059e4::t_ee2c55f023d78b 611-615
+  s_8c4312024059e4::t_cbe1a2b4f956da 616-618
+harness/temporal/worker.py
+  s_8c4312024059e4::t_ce2036c371b30a 40
+  s_8c4312024059e4::t_35c0b462e8debc 20
+harness/temporal/activities.py
+  s_8c4312024059e4::t_8759eafa13e69e 31-40
+  s_8c4312024059e4::t_0e87a8daeab306 73-136
+  s_8c4312024059e4::t_398388361ce642 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "35392c838c5913c8a59559c673ad2034988f9108",
+  "prompts": {},
+  "sessions": {
+    "s_8c4312024059e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28d8111e-6cee-4627-ba5d-b72f37aa2b6d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Kim Shalti Aharfi <kim.aharfi@octopus.com>"
+    }
+  }
+}
