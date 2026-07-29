@@ -1,0 +1,74 @@
+# pr_validator agent Job template — read-only GitHub token, no write access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-pr-validator
+  namespace: agent-harness
+  annotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "pr-validator"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-pr-validator
+  namespace: agent-harness
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-pr-validator
+  namespace: agent-harness
+subjects:
+  - kind: ServiceAccount
+    name: agent-pr-validator
+    namespace: agent-harness
+roleRef:
+  kind: Role
+  name: agent-pr-validator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pr-validator-THREAD_ID
+  namespace: agent-harness
+  labels:
+    agent: pr-validator
+    thread-id: THREAD_ID
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "pr-validator"
+        # READ-ONLY GitHub token — cannot push, merge, or create branches
+        vault.hashicorp.com/agent-inject-secret-github: "secret/data/agents/pr-validator/github"
+        vault.hashicorp.com/agent-inject-template-github: |
+          {{- with secret "secret/data/agents/pr-validator/github" -}}
+          export GITHUB_TOKEN="{{ .Data.data.token }}"
+          {{- end }}
+    spec:
+      serviceAccountName: agent-pr-validator
+      restartPolicy: Never
+      # runtimeClassName: gvisor  # ⚠️ Enable on real nodes
+      containers:
+        - name: agent
+          image: agent-harness:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "temporal.worker"]
+          env:
+            - name: TEMPORAL_HOST
+              value: "temporal-frontend.temporal.svc.cluster.local:7233"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "pr-validator-queue"
+            - name: TARGET_REPO
+              value: "kim-codefresh/cf-api-test"
+            - name: LITELLM_MODEL
+              value: "anthropic/claude-haiku-4-5-20251001"

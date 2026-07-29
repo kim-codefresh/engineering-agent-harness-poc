@@ -27,7 +27,7 @@ spec:
 
   source:
     repoURL: https://github.com/kim-codefresh/engineering-agent-harness-poc.git   # e.g. https://github.com/your-org/engineering-agent-harness-poc.git
-    targetRevision: HEAD
+    targetRevision: feat/full-cve-flow-human-gates-lift-and-shift
     path: k8s
 
   destination:

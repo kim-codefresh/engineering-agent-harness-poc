@@ -1,0 +1,837 @@
+<title>Agent Harness</title>
+<style>
+:root {
+  --sb:#0F1520; --sb2:#1A2235; --sb-hover:rgba(255,255,255,.06); --sb-active:rgba(59,130,246,.18);
+  --sb-text:#8A9BB8; --sb-text-bright:#C8D4E8; --sb-head:rgba(255,255,255,.3);
+  --ground:#F4F6F9; --surface:#FFFFFF; --border:#E2E8F0; --border-2:#CBD5E1;
+  --text:#1E293B; --text-mid:#475569; --text-dim:#94A3B8;
+  --blue:#3B82F6; --blue-bg:#EFF6FF; --blue-dark:#1D4ED8;
+  --purple:#7C3AED; --purple-bg:#F5F3FF;
+  --amber:#D97706; --amber-bg:#FFFBEB;
+  --green:#059669; --green-bg:#ECFDF5;
+  --danger:#EF4444;
+  --mono:'Menlo','Consolas','Courier New',monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --sh:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+  --sh-lg:0 8px 24px rgba(0,0,0,.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--ground);color:var(--text);font-size:13px;line-height:1.5;height:100vh;overflow:hidden;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+
+/* ── Shell ────────────────────────────────────── */
+#shell{display:flex;flex:1;overflow:hidden}
+
+/* ── Sidebar ──────────────────────────────────── */
+#sidebar{width:220px;background:var(--sb);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.sb-logo{padding:16px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.sb-logo-icon{width:28px;height:28px;background:var(--blue);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;font-family:var(--mono)}
+.sb-logo-text{font-size:13px;font-weight:600;color:var(--sb-text-bright);letter-spacing:-.01em}
+.sb-body{flex:1;overflow-y:auto;padding:8px 0}
+.sb-section{padding:16px 12px 4px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--sb-head)}
+.sb-item{display:flex;align-items:center;gap:9px;padding:7px 14px;cursor:pointer;color:var(--sb-text);border-left:2px solid transparent;transition:all .12s}
+.sb-item:hover{background:var(--sb-hover);color:var(--sb-text-bright)}
+.sb-item.active{background:var(--sb-active);color:#fff;border-left-color:var(--blue)}
+.sb-item-icon{font-size:14px;width:16px;text-align:center;flex-shrink:0}
+.sb-item-text{font-size:12px}
+.sb-spacer{flex:1}
+.sb-add{width:16px;height:16px;background:rgba(255,255,255,.15);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:var(--sb-text);cursor:pointer;margin-left:auto;flex-shrink:0}
+.sb-add:hover{background:var(--blue);color:#fff}
+
+/* ── Main ────────────────────────────────────── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Topbar ──────────────────────────────────── */
+#topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:46px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)}
+.breadcrumb span{color:var(--text-mid)}
+.breadcrumb strong{color:var(--text)}
+.breadcrumb-sep{color:var(--border-2)}
+#topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{padding:6px 14px;border-radius:5px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all .12s;display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:var(--blue-dark)}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{opacity:.9}
+.btn-ghost{background:transparent;border:1px solid var(--border-2);color:var(--text-mid)}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue)}
+.view-tabs{display:flex;background:var(--ground);border:1px solid var(--border);border-radius:5px;padding:2px;gap:2px}
+.view-tab{padding:4px 12px;border-radius:3px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text-dim);transition:all .12s}
+.view-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* ── Content area ───────────────────────────── */
+#content{flex:1;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── Pipeline view ───────────────────────────── */
+#pipeline-view{flex:1;overflow:auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px}
+.pipeline-row{display:flex;align-items:center;gap:0;overflow-x:auto;padding-bottom:8px}
+.step-card{width:148px;min-width:148px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--sh);cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.step-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--card-accent,var(--border))}
+.step-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.12);transform:translateY(-1px)}
+.step-card.selected{border-color:var(--card-accent);box-shadow:0 0 0 2px var(--card-accent)}
+.step-card.agent{--card-accent:var(--purple)}
+.step-card.deterministic{--card-accent:var(--blue)}
+.step-card.gate{--card-accent:var(--amber);border-radius:4px;transform-origin:center}
+.step-card-inner{padding:12px}
+.step-kind-badge{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;padding:2px 6px;border-radius:3px;display:inline-block;margin-bottom:8px}
+.badge-agent{background:var(--purple-bg);color:var(--purple)}
+.badge-code{background:var(--blue-bg);color:var(--blue-dark)}
+.badge-gate{background:var(--amber-bg);color:var(--amber)}
+.step-name{font-size:12px;font-weight:600;color:var(--text);font-family:var(--mono);word-break:break-all}
+.step-sub{font-size:10px;color:var(--text-dim);margin-top:3px}
+.step-connector{width:36px;min-width:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.step-connector::before{content:'';position:absolute;left:0;right:0;height:1px;background:var(--border-2)}
+.step-connector svg{background:var(--ground);position:relative;z-index:1}
+.gate-routes{display:flex;flex-direction:column;gap:3px;align-items:center}
+.gate-route-pill{font-size:9.5px;font-family:var(--mono);color:var(--amber);background:var(--amber-bg);border:1px solid rgba(217,119,6,.25);border-radius:10px;padding:1px 7px;white-space:nowrap}
+.route-labels{display:flex;flex-direction:column;gap:3px;margin-top:6px}
+.route-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);text-align:center}
+
+/* ── Step editor panel ───────────────────────── */
+#editor-panel{background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;overflow:hidden;transition:height .2s}
+#editor-panel.open{border-top:2px solid var(--blue)}
+.editor-header{padding:10px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.editor-kind-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.editor-title{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text)}
+.editor-body{padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px 20px;overflow-y:auto;max-height:200px}
+.ef{display:flex;flex-direction:column;gap:4px}
+.ef label{font-size:11px;font-weight:500;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em}
+.ef input,.ef select,.ef textarea{padding:7px 9px;border:1px solid var(--border-2);border-radius:5px;font-family:var(--mono);font-size:12px;color:var(--text);background:var(--surface);outline:none;transition:border .12s;width:100%}
+.ef input:focus,.ef select:focus,.ef textarea:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.1)}
+.ef textarea{min-height:60px;resize:vertical;line-height:1.5}
+.editor-actions{padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.editor-close{margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;line-height:1}
+
+/* ── Empty state ─────────────────────────────── */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text-dim)}
+.empty-state strong{color:var(--text-mid);font-size:14px}
+
+/* ── YAML panel ──────────────────────────────── */
+#yaml-view{flex:1;display:flex;flex-direction:column;padding:0;overflow:hidden}
+.yaml-toolbar{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--surface)}
+.yaml-path{font-family:var(--mono);font-size:11px;color:var(--text-dim);flex:1}
+.yaml-area{flex:1;overflow:auto;padding:20px;background:var(--ground)}
+textarea.yaml-edit{width:100%;height:100%;min-height:320px;font-family:var(--mono);font-size:12px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);resize:none;outline:none}
+textarea.yaml-edit:focus{border-color:var(--blue)}
+
+/* ── List panel ──────────────────────────────── */
+#list-view{flex:1;overflow-y:auto;padding:20px}
+.list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.list-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;cursor:pointer;transition:all .12s;box-shadow:var(--sh)}
+.list-card:hover{border-color:var(--blue);box-shadow:0 4px 12px rgba(59,130,246,.12)}
+.list-card-name{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.list-card-meta{font-size:11px;color:var(--text-dim)}
+
+/* ── Modal ───────────────────────────────────── */
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:200}
+#modal.open{display:flex}
+.modal-box{background:var(--surface);border-radius:10px;box-shadow:var(--sh-lg);width:480px;max-width:90vw;overflow:hidden}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:14px;font-weight:600;color:var(--text)}
+.modal-close{background:none;border:none;font-size:20px;color:var(--text-dim);cursor:pointer}
+.modal-body{padding:20px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.form-field{display:flex;flex-direction:column;gap:5px}
+.form-field label{font-size:12px;font-weight:500;color:var(--text-mid)}
+.form-field input,.form-field select{padding:8px 10px;border:1px solid var(--border-2);border-radius:5px;font-size:13px;color:var(--text);background:var(--surface);outline:none}
+.form-field input:focus,.form-field select:focus{border-color:var(--blue)}
+.pr-result{padding:12px 14px;border-radius:6px;font-size:13px}
+.pr-result.ok{background:var(--green-bg);color:var(--green)}
+.pr-result.ok a{color:var(--blue)}
+.pr-result.err{background:#FEF2F2;color:var(--danger)}
+
+/* ── Toast ───────────────────────────────────── */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:300;box-shadow:var(--sh-lg)}
+#toast.show{opacity:1}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="shell">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">AH</div>
+      <span class="sb-logo-text">agent-harness</span>
+    </div>
+    <div class="sb-body">
+      <div class="sb-section">General</div>
+      <div class="sb-item" id="sb-runs" onclick="setView('runs')">
+        <span class="sb-item-icon">⚡</span>
+        <span class="sb-item-text">Active Runs</span>
+      </div>
+
+      <div class="sb-section">Workflows</div>
+      <div id="sb-workflows"></div>
+      <div class="sb-item" onclick="showCreateWorkflow()" style="opacity:.7">
+        <span class="sb-item-icon">+</span>
+        <span class="sb-item-text">New Workflow</span>
+      </div>
+
+      <div class="sb-section">Agents</div>
+      <div id="sb-agents"></div>
+      <div class="sb-item" onclick="showCreateAgent()" style="opacity:.7">
+        <span class="sb-item-icon">+</span>
+        <span class="sb-item-text">New Agent</span>
+      </div>
+
+      <div class="sb-section">Step Types</div>
+      <div id="sb-steptypes"></div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="topbar">
+      <div class="breadcrumb" id="breadcrumb">
+        <span>Agent Harness</span>
+      </div>
+      <div id="topbar-right">
+        <div class="view-tabs" id="view-tabs" style="display:none">
+          <div class="view-tab active" onclick="switchTab('pipeline')">Pipeline</div>
+          <div class="view-tab" onclick="switchTab('yaml')">YAML</div>
+        </div>
+        <button class="btn btn-ghost" id="btn-discard" style="display:none" onclick="discardEdits()">Discard changes</button>
+        <button class="btn btn-primary" id="btn-save" style="display:none" onclick="saveEditing()">Save</button>
+        <button class="btn btn-success" id="btn-trigger" style="display:none" onclick="triggerCurrentRun()">▶ Trigger</button>
+      </div>
+    </div>
+    <div id="content">
+      <div class="empty-state" id="empty-state">
+        <strong>Select a workflow or agent</strong>
+        <span>Choose from the sidebar to get started</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PR Modal -->
+<div id="modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Propose change as PR</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="form-field"><label>PR description</label>
+        <input id="pr-desc" placeholder="Describe what changed and why"/></div>
+      <div class="form-field"><label>Target branch</label>
+        <select id="pr-branch"><option>Loading…</option></select></div>
+      <div style="font-size:12px;color:var(--text-dim)">Creates a branch, commits the YAML, opens a PR. ArgoCD syncs on merge.</div>
+      <div id="pr-result" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-btn" onclick="submitPr()">Create PR</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = { view:null, item:null, workflows:{}, agents:{}, stepTypes:[], runs:{} };
+let _tab = 'pipeline';
+let _editing = null;   // { type, id, config, serverYaml, dirty }
+let _selStep = null;
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(m, p, b) {
+  const o={method:m,headers:{'Content-Type':'application/json'}};
+  if(b) o.body=JSON.stringify(b);
+  const r=await fetch(p,o);
+  if(!r.ok){const e=await r.json().catch(()=>({detail:r.statusText}));throw new Error(e.detail||r.statusText)}
+  return r.json();
+}
+function toast(msg,ok=true){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.style.background=ok?'#0F172A':'#EF4444';
+  el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2500);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function boot() {
+  try {
+    const [wf,ag,st,runs]=await Promise.all([
+      api('GET','/api/workflows'),
+      api('GET','/api/agents'),
+      api('GET','/api/step-types'),
+      api('GET','/api/runs').catch(()=>({})),
+    ]);
+    S.workflows=wf; S.agents=ag; S.stepTypes=st; S.runs=runs;
+    renderSidebar();
+  } catch(e) { toast('Server not reachable',false); }
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  document.getElementById('sb-workflows').innerHTML =
+    Object.keys(S.workflows).map(id=>`<div class="sb-item ${S.view==='workflow'&&S.item===id?'active':''}" onclick="selectWorkflow('${id}')">
+      <span class="sb-item-icon" style="font-size:11px">⬡</span>
+      <span class="sb-item-text">${id}</span>
+    </div>`).join('');
+  document.getElementById('sb-agents').innerHTML =
+    Object.keys(S.agents).map(id=>`<div class="sb-item ${S.view==='agent'&&S.item===id?'active':''}" onclick="selectAgent('${id}')">
+      <span class="sb-item-icon" style="font-size:11px">◈</span>
+      <span class="sb-item-text">${id}</span>
+    </div>`).join('');
+  document.getElementById('sb-steptypes').innerHTML =
+    S.stepTypes.map(t=>`<div class="sb-item ${S.view==='steptype'&&S.item===t?'active':''}" onclick="selectStepType('${t}')">
+      <span class="sb-item-icon" style="font-size:11px">⬘</span>
+      <span class="sb-item-text">${t}</span>
+    </div>`).join('');
+  document.getElementById('sb-runs').className = `sb-item ${S.view==='runs'?'active':''}`;
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function setView(view, item) {
+  S.view=view; S.item=item; _editing=null; _selStep=null; _tab='pipeline';
+  renderSidebar(); renderMain();
+}
+function selectWorkflow(id) { setView('workflow',id); }
+function selectAgent(id) { setView('agent',id); }
+function selectStepType(id) { setView('steptype',id); }
+
+function switchTab(tab) {
+  _tab=tab;
+  document.querySelectorAll('.view-tab').forEach(t=>t.classList.toggle('active',t.textContent.toLowerCase()===tab));
+  renderContent();
+}
+
+// ── Breadcrumb + topbar ───────────────────────────────────────────────────────
+function updateTopbar() {
+  const bc=document.getElementById('breadcrumb');
+  const tabs=document.getElementById('view-tabs');
+  const btnD=document.getElementById('btn-discard');
+  const btnS=document.getElementById('btn-save');
+  const btnT=document.getElementById('btn-trigger');
+
+  if (S.view==='workflow') {
+    bc.innerHTML=`<span>Workflows</span><span class="breadcrumb-sep">›</span><strong>${S.item}</strong>`;
+    tabs.style.display='flex'; btnD.style.display='flex'; btnS.style.display='flex'; btnT.style.display='flex';
+  } else if (S.view==='agent') {
+    bc.innerHTML=`<span>Agents</span><span class="breadcrumb-sep">›</span><strong>${S.item}</strong>`;
+    tabs.style.display='flex'; btnD.style.display='flex'; btnS.style.display='flex'; btnT.style.display='none';
+  } else {
+    bc.innerHTML=`<span>Agent Harness</span>`;
+    tabs.style.display='none'; btnD.style.display='none'; btnS.style.display='none'; btnT.style.display='none';
+  }
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function renderMain() {
+  updateTopbar();
+  const c=document.getElementById('content');
+  if (!S.view||S.view==='runs') { renderRuns(c); return; }
+  if (S.view==='steptype') { renderStepType(c); return; }
+  if (S.view==='workflow'||S.view==='agent') {
+    ensureEditing();
+    renderContent();
+  }
+}
+
+function renderContent() {
+  const c=document.getElementById('content');
+  c.innerHTML='';
+  if (_tab==='pipeline') {
+    if (S.view==='workflow') renderPipeline(c);
+    else renderAgentPipeline(c);
+  } else {
+    renderYamlPanel(c);
+  }
+}
+
+// ── Pipeline view ─────────────────────────────────────────────────────────────
+function renderPipeline(c) {
+  const steps=(_editing?.config?.steps)||[];
+  c.innerHTML=`
+    <div id="pipeline-view">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-ghost" style="font-size:11px" onclick="addStep('agent')">+ Agent step</button>
+        <button class="btn btn-ghost" style="font-size:11px" onclick="addStep('deterministic')">+ Code step</button>
+        <button class="btn btn-ghost" style="font-size:11px;color:var(--amber);border-color:var(--amber)" onclick="addStep('gate')">+ Gate</button>
+      </div>
+      <div class="pipeline-row" id="pipeline-row">${buildPipelineRow(steps)}</div>
+    </div>
+    <div id="editor-panel"></div>`;
+  if (_selStep) renderStepEditor();
+}
+
+function buildPipelineRow(steps) {
+  if (!steps.length) return `<div style="color:var(--text-dim);font-size:13px;padding:20px">No steps yet — add one above</div>`;
+  return steps.map((step,i)=>{
+    const isGate='gate' in step, isAgent='agent' in step, isDet='deterministic' in step;
+    const conn = i<steps.length-1 ? `<div class="step-connector"><svg width="20" height="16"><path d="M0 8 L12 8 L6 4 L12 8 L6 12 L12 8" fill="none" stroke="#CBD5E1" stroke-width="1.5"/></svg></div>` : '';
+    if (isGate) {
+      const g=step.gate||{};
+      const routes=step.routes?Object.entries(step.routes).map(([o,d])=>`<div class="gate-route-pill">${o} → ${d||'?'}</div>`).join(''):'';
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0">
+        <div class="step-card gate ${_selStep===step.id?'selected':''}" onclick="selectStep('${step.id}')">
+          <div class="step-card-inner">
+            <span class="step-kind-badge badge-gate">gate</span>
+            <div class="step-name">${step.id}</div>
+            <div class="step-sub">${g.output_field||'decision'} [${(g.options||[]).length} options]</div>
+          </div>
+        </div>
+        ${routes?`<div class="gate-routes">${routes}</div>`:''}
+      </div>${conn}`;
+    }
+    const cls=isAgent?'agent':isDet?'deterministic':'';
+    const badge=isAgent?'badge-agent':isDet?'badge-code':'';
+    const kindLabel=isAgent?'agent':'code';
+    const cfg=step[isAgent?'agent':'deterministic']||{};
+    const sub=isAgent?(cfg.uses?`uses: ${cfg.uses}`:`type: ${cfg.type||'call_llm'}`):`type: ${cfg.type||'?'}`;
+    return `<div class="step-card ${cls} ${_selStep===step.id?'selected':''}" onclick="selectStep('${step.id}')">
+      <div class="step-card-inner">
+        <span class="step-kind-badge ${badge}">${kindLabel}</span>
+        <div class="step-name">${step.id}</div>
+        <div class="step-sub">${sub}</div>
+      </div>
+    </div>${conn}`;
+  }).join('');
+}
+
+function renderAgentPipeline(c) {
+  const steps=(_editing?.config?.steps)||[];
+  c.innerHTML=`
+    <div id="pipeline-view">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-ghost" style="font-size:11px" onclick="addAgentStepType()">+ Add step type</button>
+      </div>
+      <div class="pipeline-row" id="pipeline-row">${buildAgentRow(steps)}</div>
+    </div>
+    <div id="editor-panel"></div>`;
+  if (_selStep) renderStepEditor();
+}
+
+function buildAgentRow(steps) {
+  if (!steps.length) return `<div style="color:var(--text-dim);font-size:13px;padding:20px">No steps yet</div>`;
+  return steps.map((s,i)=>{
+    const conn=i<steps.length-1?`<div class="step-connector"><svg width="20" height="16"><path d="M0 8 L12 8 L6 4 L12 8 L6 12 L12 8" fill="none" stroke="#CBD5E1" stroke-width="1.5"/></svg></div>`:'';
+    return `<div class="step-card deterministic ${_selStep===s.type+i?'selected':''}" onclick="selectAgentStep(${i})">
+      <div class="step-card-inner">
+        <span class="step-kind-badge badge-code">step</span>
+        <div class="step-name">${s.type}</div>
+        <div class="step-sub">→ ${s.output_field||'?'}</div>
+      </div>
+    </div>${conn}`;
+  }).join('');
+}
+
+// ── Step editor ───────────────────────────────────────────────────────────────
+function selectStep(id) { _selStep=id; renderContent(); }
+function selectAgentStep(idx) { _selStep='__agent_'+idx; renderContent(); }
+
+function renderStepEditor() {
+  const panel=document.getElementById('editor-panel');
+  if (!panel) return;
+  panel.classList.add('open');
+
+  if (S.view==='agent' && _selStep?.startsWith('__agent_')) {
+    const idx=parseInt(_selStep.replace('__agent_',''));
+    const step=(_editing.config.steps||[])[idx];
+    if (!step) return;
+    const typeOpts=S.stepTypes.map(t=>`<option value="${t}" ${t===step.type?'selected':''}>${t}</option>`).join('');
+    panel.innerHTML=`<div class="editor-header">
+      <div class="editor-kind-dot" style="background:var(--blue)"></div>
+      <div class="editor-title">Step type: ${step.type}</div>
+      <button class="editor-close" onclick="closeEditor()">×</button></div>
+      <div class="editor-body">
+        <div class="ef"><label>Step type</label><select onchange="updateAgentStepType(${idx},this.value)">${typeOpts}</select></div>
+        <div class="ef"><label>Output field</label><input value="${step.output_field||''}" onchange="updateAgentStepField(${idx},'output_field',this.value)"/></div>
+      </div>
+      <div class="editor-actions">
+        <button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger)" onclick="removeAgentStep(${idx})">Remove step</button>
+        <button class="btn btn-primary" onclick="saveEditing()">Save</button>
+        <button class="btn btn-ghost" onclick="openPrModal()">↗ Propose as PR</button>
+      </div>`;
+    return;
+  }
+
+  const steps=_editing.config.steps||[];
+  const step=steps.find(s=>s.id===_selStep);
+  if (!step) return;
+  const isGate='gate' in step, isAgent='agent' in step, isDet='deterministic' in step;
+  const dotColor=isGate?'var(--amber)':isAgent?'var(--purple)':'var(--blue)';
+  const kindLabel=isGate?'Gate':isAgent?'Agent step':'Code step';
+  const otherIds=steps.map(s=>s.id).filter(id=>id!==step.id);
+  const nextOpts=otherIds.map(id=>`<option value="${id}" ${step.next===id?'selected':''}>${id}</option>`).join('');
+
+  let fields='';
+  if (isGate) {
+    const g=step.gate||{};
+    const routeRows=(g.options||[]).map(opt=>{
+      const destOpts=otherIds.map(id=>`<option value="${id}" ${step.routes?.[opt]===id?'selected':''}>${id}</option>`).join('');
+      return `<div class="ef"><label>${opt} →</label><select onchange="updateRoute('${step.id}','${opt}',this.value)"><option value="">none</option>${destOpts}</select></div>`;
+    }).join('');
+    fields=`<div class="ef"><label>Step ID</label><input value="${step.id}" onchange="renameStep('${step.id}',this.value)"/></div>
+      <div class="ef"><label>Output field</label><input value="${g.output_field||''}" onchange="updateGateField('${step.id}','output_field',this.value)"/></div>
+      <div class="ef"><label>Options (comma separated)</label><input value="${(g.options||[]).join(', ')}" onchange="updateGateOptions('${step.id}',this.value)"/></div>
+      ${routeRows}`;
+  } else if (isAgent) {
+    const cfg=step.agent||{};
+    const isNamed=!!cfg.uses;
+    const agOpts=Object.keys(S.agents).map(a=>`<option value="${a}" ${cfg.uses===a?'selected':''}>${a}</option>`).join('');
+    const tOpts=S.stepTypes.map(t=>`<option value="${t}" ${cfg.type===t?'selected':''}>${t}</option>`).join('');
+    fields=`<div class="ef"><label>Step ID</label><input value="${step.id}" onchange="renameStep('${step.id}',this.value)"/></div>
+      <div class="ef"><label>Kind</label><select onchange="toggleAgentKind('${step.id}',this.value)">
+        <option value="inline" ${!isNamed?'selected':''}>Inline LLM call</option>
+        <option value="named" ${isNamed?'selected':''}>Reuse named agent</option>
+      </select></div>
+      ${isNamed
+        ? `<div class="ef"><label>Uses agent</label><select onchange="updateAgentUses('${step.id}',this.value)">${agOpts}</select></div>`
+        : `<div class="ef"><label>Step type</label><select onchange="updateAgentInlineType('${step.id}',this.value)">${tOpts}</select></div>
+           <div class="ef"><label>Output field</label><input value="${cfg.output_field||''}" onchange="updateAgentInlineField('${step.id}','output_field',this.value)"/></div>
+           <div class="ef" style="grid-column:1/-1"><label>Prompt</label><textarea onchange="updateAgentInlineField('${step.id}','prompt',this.value)">${cfg.prompt||''}</textarea></div>`
+      }
+      <div class="ef"><label>Next step</label><select onchange="updateNext('${step.id}',this.value)"><option value="">— end —</option>${nextOpts}</select></div>`;
+  } else {
+    const cfg=step.deterministic||{};
+    const tOpts=S.stepTypes.map(t=>`<option value="${t}" ${cfg.type===t?'selected':''}>${t}</option>`).join('');
+    fields=`<div class="ef"><label>Step ID</label><input value="${step.id}" onchange="renameStep('${step.id}',this.value)"/></div>
+      <div class="ef"><label>Step type</label><select onchange="updateDetType('${step.id}',this.value)">${tOpts}</select></div>
+      <div class="ef"><label>Output field</label><input value="${cfg.output_field||''}" onchange="updateDetField('${step.id}','output_field',this.value)"/></div>
+      <div class="ef"><label>Next step</label><select onchange="updateNext('${step.id}',this.value)"><option value="">— end —</option>${nextOpts}</select></div>`;
+  }
+
+  panel.innerHTML=`<div class="editor-header">
+    <div class="editor-kind-dot" style="background:${dotColor}"></div>
+    <div class="editor-title">${kindLabel}: ${step.id}</div>
+    <button class="editor-close" onclick="closeEditor()">×</button></div>
+    <div class="editor-body">${fields}</div>
+    <div class="editor-actions">
+      <button class="btn btn-ghost" style="color:var(--danger);border-color:var(--danger)" onclick="removeStep('${step.id}')">Remove step</button>
+      <button class="btn btn-primary" onclick="saveEditing()">Save changes</button>
+      <button class="btn btn-ghost" onclick="openPrModal()">↗ Propose as PR</button>
+    </div>`;
+}
+
+function closeEditor() { _selStep=null; renderContent(); }
+
+// ── YAML view ─────────────────────────────────────────────────────────────────
+function renderYamlPanel(c) {
+  const path = S.view==='workflow'
+    ? `harness/config/workflows/${S.item}.yaml`
+    : `harness/config/agents/${S.item}.md`;
+  c.innerHTML=`<div id="yaml-view">
+    <div class="yaml-toolbar">
+      <span class="yaml-path">${path}</span>
+      <button class="btn btn-ghost" style="font-size:11px" onclick="copyYaml()">⎘ Copy</button>
+      <button class="btn btn-primary" style="font-size:11px" onclick="openPrModal()">↗ Propose as PR</button>
+    </div>
+    <div class="yaml-area"><textarea class="yaml-edit" id="yaml-edit" onchange="onYamlEdit(this.value)" oninput="onYamlEdit(this.value)">${editingYaml()}</textarea></div>
+  </div>`;
+}
+
+// ── Runs view ─────────────────────────────────────────────────────────────────
+function renderRuns(c) {
+  const runs=Object.values(S.runs);
+  if (!runs.length) {
+    c.innerHTML=`<div class="empty-state" id="empty-state"><strong>No active runs</strong><span>Trigger a workflow to start</span></div>`;
+    return;
+  }
+
+  const runCards = runs.map(r => {
+    const gate = r.pending_gate;
+    const isWaiting = gate && gate.field;
+    const shortId = r.thread_id.replace('cve_remediation-','').replace(/-\d+$/,'');
+
+    // Recovery section — shown when workflow is stuck
+    const stepFailure = r.pending_gate?.state?.step_failure;
+    const recoverySection = stepFailure ? `
+      <div style="margin-top:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:12px">
+        <div style="font-size:10px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          🚨 Stuck at: ${stepFailure.step} (${stepFailure.attempts} attempts)
+        </div>
+        <div style="font-size:11px;color:#7F1D1D;margin-bottom:10px;font-family:var(--mono)">${stepFailure.error?.slice(0,120)}...</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="font-size:11px;color:var(--ok);border-color:var(--ok)"
+            onclick="sendRecovery('${r.thread_id}','retry')">↺ Retry (fix deployed)</button>
+          <button class="btn btn-ghost" style="font-size:11px"
+            onclick="sendRecovery('${r.thread_id}','skip_to','pr_gate')">→ Skip to PR review</button>
+          <button class="btn btn-ghost" style="font-size:11px"
+            onclick="sendRecovery('${r.thread_id}','skip_to','research')">↩ Back to research</button>
+          <button class="btn btn-ghost" style="font-size:11px;color:var(--danger);border-color:var(--danger)"
+            onclick="sendRecovery('${r.thread_id}','cancel')">✕ Cancel</button>
+        </div>
+      </div>` : '';
+
+    const gateSection = isWaiting ? `
+      <div style="margin-top:12px;background:var(--gate-bg);border:1px solid rgba(217,119,6,.3);border-radius:6px;padding:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--gate);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          ⬡ Gate: ${gate.gate} — waiting for your decision
+        </div>
+        ${gate.state?.assessment ? `
+          <div style="font-size:11px;color:var(--text-mid);margin-bottom:8px">
+            <strong>Affected:</strong> ${gate.state.assessment.affected ? 'Yes ⚠️' : 'No ✅'} ·
+            <strong>Risk:</strong> ${gate.state.assessment.risk_level || '—'} ·
+            <strong>Rec:</strong> ${gate.state.assessment.recommended_disposition || '—'}
+          </div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${(gate.options||[]).map((opt,i)=>`
+            <button class="btn ${i===0?'btn-primary':'btn-ghost'}"
+              style="font-size:11px;padding:5px 12px"
+              onclick="submitGateDecision('${r.thread_id}','${r.workflow||'cve_remediation'}','${gate.field}','${opt}')">
+              ${opt}
+            </button>`).join('')}
+        </div>
+      </div>` : '';
+
+    const statusColor = isWaiting ? 'var(--gate)' : r.status === 'running' ? 'var(--ok)' : 'var(--text-dim)';
+    const statusIcon  = isWaiting ? '⬡' : r.status === 'running' ? '⚡' : '✓';
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;box-shadow:var(--sh)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text)">${shortId}</div>
+        <span style="font-size:10px;color:${statusColor};font-weight:600">${statusIcon} ${r.status||'running'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${r.workflow||'cve_remediation'}</div>
+      ${recoverySection}
+      ${gateSection}
+    </div>`;
+  }).join('');
+
+  c.innerHTML=`<div id="list-view" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:13px;font-weight:600">${runs.length} active run${runs.length!==1?'s':''}</span>
+      <button class="btn btn-ghost" style="font-size:11px" onclick="refreshRuns()">↺ Refresh</button>
+    </div>
+    ${runCards}
+  </div>`;
+}
+
+async function submitGateDecision(threadId, workflowId, field, decision) {
+  try {
+    await api('POST', `/api/decision/${workflowId}/${threadId}`, {field, decision});
+    if (S.runs[threadId]) S.runs[threadId].pending_gate = null;
+    toast(`Decision sent: ${decision}`);
+    setTimeout(() => { refreshRuns(); }, 1000);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function sendRecovery(threadId, action, step='') {
+  try {
+    await api('POST', `/api/runs/${threadId}/recover`, {action, step});
+    toast(`Recovery sent: ${action}${step ? ' → '+step : ''}`);
+    setTimeout(() => { refreshRuns(); }, 1500);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function refreshRuns() {
+  try {
+    const runs = await api('GET', '/api/runs');
+    S.runs = runs;
+    if (S.view==='runs') renderMain();
+  } catch(e) {}
+}
+
+function renderStepType(c) {
+  c.innerHTML=`<div id="list-view"><div style="max-width:480px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:8px">${S.item}</h3>
+    <p style="font-size:13px;color:var(--text-mid)">Built-in step type implemented in Python by the harness team. Versioned with the harness image. Referenced by <code style="font-family:var(--mono)">type: ${S.item}</code> in workflow steps.</p>
+  </div></div>`;
+}
+
+// ── Editing state ─────────────────────────────────────────────────────────────
+function ensureEditing() {
+  if (_editing?.id===S.item&&_editing?.type===S.view) return;
+  const src = S.view==='workflow' ? S.workflows[S.item] : S.agents[S.item];
+  _editing = { type:S.view, id:S.item, config:JSON.parse(JSON.stringify(src||{})), serverYaml:null, dirty:false };
+  const ep = S.view==='workflow' ? `/api/workflows/${S.item}/yaml` : `/api/agents/${S.item}/yaml`;
+  api('GET',ep).then(r=>{ if(_editing?.id===S.item) { _editing.serverYaml=r.content; if(_tab==='yaml') renderContent(); }}).catch(()=>{});
+}
+
+function editingYaml() {
+  if (!_editing.dirty && _editing.serverYaml) return _editing.serverYaml;
+  return toYaml(_editing.config);
+}
+function markDirty() { if(_editing) _editing.dirty=true; }
+function onYamlEdit(v) { if(_editing) { _editing._rawYaml=v; _editing.dirty=true; } }
+function copyYaml() { navigator.clipboard.writeText(editingYaml()).then(()=>toast('Copied')); }
+function discardEdits() { _editing=null; ensureEditing(); renderContent(); toast('Changes discarded'); }
+
+async function saveEditing() {
+  if (!_editing) return;
+  try {
+    const ep=_editing.type==='workflow'?'/api/workflows':'/api/agents';
+    await api('POST',ep,_editing.config);
+    await boot(); toast(`${_editing.id} saved`);
+    _editing.dirty=false; _editing.serverYaml=null;
+    renderContent();
+  } catch(e) { toast(e.message,false); }
+}
+
+// ── YAML serialiser ───────────────────────────────────────────────────────────
+function toYaml(obj,indent=0) {
+  const sp='  '.repeat(indent);
+  if(obj===null||obj===undefined) return 'null';
+  if(typeof obj==='boolean') return String(obj);
+  if(typeof obj==='number') return String(obj);
+  if(typeof obj==='string') {
+    if(obj.includes('\n')) return `|\n${obj.split('\n').map(l=>`${sp}  ${l}`).join('\n')}`;
+    if(/[:{}\[\],#&*?|<>=!%@`]/.test(obj)||obj==='true'||obj==='false'||obj==='null') return `"${obj.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`;
+    return obj;
+  }
+  if(Array.isArray(obj)) {
+    if(!obj.length) return '[]';
+    if(obj.every(x=>typeof x!=='object')) return `[${obj.join(', ')}]`;
+    return obj.map(item=>{
+      if(typeof item!=='object') return `${sp}- ${toYaml(item,0)}`;
+      return `${sp}- ${toYaml(item,indent+1).trimStart()}`;
+    }).join('\n');
+  }
+  const entries=Object.entries(obj).filter(([,v])=>v!==undefined&&v!==null&&v!=='');
+  return entries.map(([k,v])=>{
+    if(typeof v==='object'){const c=toYaml(v,indent+1);return c==='[]'?`${sp}${k}: []`:`${sp}${k}:\n${c}`;}
+    const val=toYaml(v,indent);
+    return `${sp}${k}: ${val}`;
+  }).join('\n');
+}
+
+// ── Graph edit actions ────────────────────────────────────────────────────────
+function addStep(kind) {
+  const steps=_editing.config.steps||(_editing.config.steps=[]);
+  const i=steps.length;
+  if(kind==='agent') steps.push({id:`agent_${i}`,agent:{type:'call_llm',output_field:'result',prompt:'Your prompt here...'}});
+  else if(kind==='deterministic') { const t=S.stepTypes.find(x=>x!=='call_llm')||S.stepTypes[0]; steps.push({id:`code_${i}`,deterministic:{type:t,output_field:'result'}}); }
+  else steps.push({id:`gate_${i}`,gate:{output_field:`decision_${i}`,options:['approved','rejected']},routes:{}});
+  _selStep=steps[steps.length-1].id;
+  markDirty(); renderContent();
+}
+function addAgentStepType() {
+  const steps=_editing.config.steps||(_editing.config.steps=[]); const t=S.stepTypes[0]||'call_llm';
+  steps.push({type:t,output_field:'result'}); markDirty(); renderContent();
+}
+function removeStep(id) { _editing.config.steps=(_editing.config.steps||[]).filter(s=>s.id!==id); _selStep=null; markDirty(); renderContent(); }
+function removeAgentStep(i) { (_editing.config.steps||[]).splice(i,1); _selStep=null; markDirty(); renderContent(); }
+function renameStep(old,nw) {
+  const s=(_editing.config.steps||[]).find(x=>x.id===old); if(!s) return;
+  (_editing.config.steps||[]).forEach(x=>{if(x.routes)for(const k of Object.keys(x.routes))if(x.routes[k]===old)x.routes[k]=nw;if(x.next===old)x.next=nw;});
+  s.id=nw; _selStep=nw; markDirty(); renderContent();
+}
+function updateGateField(id,f,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.gate){s.gate[f]=v;markDirty();renderContent();}}
+function updateGateOptions(id,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(!s?.gate)return;s.gate.options=v.split(',').map(x=>x.trim()).filter(Boolean);markDirty();renderContent();}
+function updateRoute(id,opt,dest){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(!s)return;if(!s.routes)s.routes={};if(dest)s.routes[opt]=dest;else delete s.routes[opt];markDirty();renderContent();}
+function updateNext(id,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s){s.next=v||undefined;markDirty();renderContent();}}
+function toggleAgentKind(id,k){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(!s)return;s.agent=k==='named'?{uses:Object.keys(S.agents)[0]||''}:{type:'call_llm',output_field:'result',prompt:''};markDirty();renderContent();}
+function updateAgentUses(id,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.agent){s.agent.uses=v;markDirty();renderContent();}}
+function updateAgentInlineType(id,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.agent){s.agent.type=v;markDirty();renderContent();}}
+function updateAgentInlineField(id,f,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.agent){s.agent[f]=v;markDirty();renderContent();}}
+function updateDetType(id,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.deterministic){s.deterministic.type=v;markDirty();renderContent();}}
+function updateDetField(id,f,v){const s=(_editing.config.steps||[]).find(x=>x.id===id);if(s?.deterministic){s.deterministic[f]=v;markDirty();renderContent();}}
+function updateAgentStepType(i,v){const s=(_editing.config.steps||[])[i];if(s){s.type=v;markDirty();renderContent();}}
+function updateAgentStepField(i,f,v){const s=(_editing.config.steps||[])[i];if(s){s[f]=v;markDirty();renderContent();}}
+
+// ── Runs ──────────────────────────────────────────────────────────────────────
+async function triggerCurrentRun() {
+  if (S.view!=='workflow'||!S.item) { toast('Select a workflow first',false); return; }
+  const threadId=`${S.item}-${Date.now()}`;
+  const ticket={cve_id:'CVE-2026-99999',advisory:{id:'CVE-2026-99999',summary:'RCE in demo-package',package:'demo-package',affected_versions:['1.2.0','1.2.1']},dependencies:{'demo-package':'1.2.0'}};
+  toast('⚠️ LLM call will be made (~$0.001)');
+  try {
+    const r=await api('POST',`/api/run/${S.item}/${threadId}`,ticket);
+    S.runs[threadId]={...r,workflow:S.item,thread_id:threadId};
+    toast(`Run started`); setView('runs',null);
+  } catch(e) { toast(e.message,false); }
+}
+async function openRun(tid) {
+  const run=S.runs[tid]; if (!run) return;
+  if (run.status!=='waiting_for_human') return;
+  const gate=run.gate||{};
+  const decision=prompt(`Gate: ${gate.gate}\nOptions: ${(gate.options||[]).join(', ')}\n\nYour decision:`);
+  if (!decision) return;
+  try {
+    const r=await api('POST',`/api/decision/${run.workflow}/${tid}`,{decision});
+    S.runs[tid]={...r,workflow:run.workflow,thread_id:tid};
+    renderMain(); toast(r.status==='complete'?`✅ ${r.outcome?.status}`:`Gate passed → ${r.gate?.gate}`);
+  } catch(e) { toast(e.message,false); }
+}
+async function reloadRegistry() {
+  await api('POST','/api/reload'); await boot(); toast('Reloaded');
+}
+
+// ── Create forms (modal-based) ────────────────────────────────────────────────
+function showCreateWorkflow() {
+  document.getElementById('modal-title').textContent='New Workflow';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-field"><label>Workflow ID</label><input id="new-wf-id" placeholder="e.g. bug_fix"/></div>
+    <div class="form-field"><label>Trigger event</label><input id="new-wf-trigger" placeholder="e.g. linear.issue.updated"/></div>`;
+  document.getElementById('modal-btn').onclick=saveNewWorkflow;
+  document.getElementById('modal-btn').textContent='Create';
+  document.getElementById('pr-result').style.display='none';
+  document.getElementById('modal').classList.add('open');
+}
+async function saveNewWorkflow() {
+  const id=document.getElementById('new-wf-id').value.trim();
+  const trigger=document.getElementById('new-wf-trigger').value.trim();
+  if (!id) { toast('ID required',false); return; }
+  try {
+    await api('POST','/api/workflows',{id,trigger:{event:trigger},steps:[],terminal_step:null});
+    await boot(); closeModal(); selectWorkflow(id); toast(`Workflow '${id}' created`);
+  } catch(e) { toast(e.message,false); }
+}
+function showCreateAgent() {
+  document.getElementById('modal-title').textContent='New Agent';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-field"><label>Agent ID</label><input id="new-ag-id" placeholder="e.g. my_assessor"/></div>`;
+  document.getElementById('modal-btn').onclick=saveNewAgent;
+  document.getElementById('modal-btn').textContent='Create';
+  document.getElementById('pr-result').style.display='none';
+  document.getElementById('modal').classList.add('open');
+}
+async function saveNewAgent() {
+  const id=document.getElementById('new-ag-id').value.trim();
+  if (!id) { toast('ID required',false); return; }
+  try {
+    await api('POST','/api/agents',{id,steps:[]});
+    await boot(); closeModal(); selectAgent(id); toast(`Agent '${id}' created`);
+  } catch(e) { toast(e.message,false); }
+}
+
+// ── PR modal ──────────────────────────────────────────────────────────────────
+async function openPrModal() {
+  if (!_editing) { toast('Nothing to propose',false); return; }
+  document.getElementById('modal-title').textContent='Propose change as PR';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-field"><label>PR description</label>
+      <input id="pr-desc" placeholder="Describe what changed and why"/></div>
+    <div class="form-field"><label>Target branch</label>
+      <select id="pr-branch"><option>Loading…</option></select></div>
+    <div style="font-size:12px;color:var(--text-dim)">Creates a branch, commits the YAML, opens a PR. ArgoCD syncs on merge.</div>
+    <div id="pr-result" style="display:none"></div>`;
+  document.getElementById('modal-btn').onclick=submitPr;
+  document.getElementById('modal-btn').textContent='Create PR';
+  document.getElementById('modal').classList.add('open');
+  try {
+    const branches=await api('GET','/api/branches');
+    const def='feat/full-cve-flow-human-gates-lift-and-shift';
+    document.getElementById('pr-branch').innerHTML=branches.map(b=>`<option value="${b}" ${b===def?'selected':''}>${b}</option>`).join('');
+  } catch { document.getElementById('pr-branch').innerHTML='<option value="master">master</option>'; }
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+async function submitPr() {
+  if (!_editing) return;
+  const desc=document.getElementById('pr-desc').value.trim();
+  const branch=document.getElementById('pr-branch').value;
+  document.getElementById('modal-btn').textContent='Creating…';
+  document.getElementById('modal-btn').disabled=true;
+  try {
+    const r=await api('POST','/api/propose',{type:_editing.type,id:_editing.id,content:editingYaml(),description:desc,base_branch:branch});
+    const el=document.getElementById('pr-result');
+    el.style.display='block'; el.className='pr-result ok';
+    el.innerHTML=`✅ PR created — <a href="${r.pr_url}" target="_blank">${r.pr_url}</a>`;
+    document.getElementById('modal-btn').style.display='none';
+    toast('PR created');
+  } catch(e) {
+    const el=document.getElementById('pr-result');
+    el.style.display='block'; el.className='pr-result err'; el.textContent=`Error: ${e.message}`;
+    document.getElementById('modal-btn').textContent='Create PR'; document.getElementById('modal-btn').disabled=false;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+boot();
+// Auto-refresh runs every 10s when on runs view
+setInterval(async () => {
+  if (S.view === 'runs') await refreshRuns();
+}, 10000);
+</script>
