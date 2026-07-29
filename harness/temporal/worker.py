@@ -17,7 +17,7 @@ from temporalio.worker import Worker
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from .workflow import HarnessWorkflow
-from .activities import load_workflow_config, notify_gate_waiting, notify_harness_failure, run_agent, run_code_step
+from .activities import load_workflow_config, notify_gate_waiting, notify_harness_failure, notify_stuck, run_agent, run_code_step
 
 TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "temporal-frontend.temporal.svc.cluster.local:7233")
 TASK_QUEUE    = os.getenv("TEMPORAL_TASK_QUEUE", "harness-queue")
@@ -37,7 +37,7 @@ async def main():
         client,
         task_queue=TASK_QUEUE,
         workflows=[HarnessWorkflow],
-        activities=[load_workflow_config, notify_gate_waiting, notify_harness_failure, run_agent, run_code_step],
+        activities=[load_workflow_config, notify_gate_waiting, notify_harness_failure, notify_stuck, run_agent, run_code_step],
         activity_executor=executor,
         max_concurrent_activities=5,
         max_concurrent_workflow_tasks=10,

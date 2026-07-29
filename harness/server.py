@@ -563,6 +563,34 @@ async def gate_waiting(body: dict):
     return {"ok": True}
 
 
+@app.post("/api/runs/{thread_id}/recover")
+async def recover(thread_id: str, body: dict):
+    """
+    Send a recovery signal to a stuck workflow.
+    body: {"action": "retry" | "skip_to" | "cancel", "step": "<step_id>"}
+
+    retry    — try the failed step again (use after deploying a fix)
+    skip_to  — jump to a different step (e.g. "pr_gate", "research")
+    cancel   — cancel the workflow
+    """
+    action = body.get("action")
+    step   = body.get("step", "")
+    if action not in ("retry", "skip_to", "cancel"):
+        raise HTTPException(status_code=400, detail="action must be retry | skip_to | cancel")
+    if action == "skip_to" and not step:
+        raise HTTPException(status_code=400, detail="step required for skip_to")
+
+    client = await _get_temporal()
+    if client:
+        handle = client.get_workflow_handle(thread_id)
+        await handle.signal("recovery_action", action, step)
+        if thread_id in _active_runs:
+            _active_runs[thread_id]["pending_gate"] = None
+        return {"status": "recovery_signal_sent", "action": action, "step": step, "thread_id": thread_id}
+    else:
+        raise HTTPException(status_code=503, detail="Temporal not available")
+
+
 @app.post("/api/runs/{thread_id}/gate")
 async def submit_gate(thread_id: str, body: dict):
     """Submit a gate decision for a running workflow. Called by the UI."""

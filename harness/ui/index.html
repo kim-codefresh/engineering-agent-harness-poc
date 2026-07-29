@@ -535,6 +535,26 @@ function renderRuns(c) {
     const isWaiting = gate && gate.field;
     const shortId = r.thread_id.replace('cve_remediation-','').replace(/-\d+$/,'');
 
+    // Recovery section — shown when workflow is stuck
+    const stepFailure = r.pending_gate?.state?.step_failure;
+    const recoverySection = stepFailure ? `
+      <div style="margin-top:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:12px">
+        <div style="font-size:10px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          🚨 Stuck at: ${stepFailure.step} (${stepFailure.attempts} attempts)
+        </div>
+        <div style="font-size:11px;color:#7F1D1D;margin-bottom:10px;font-family:var(--mono)">${stepFailure.error?.slice(0,120)}...</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost" style="font-size:11px;color:var(--ok);border-color:var(--ok)"
+            onclick="sendRecovery('${r.thread_id}','retry')">↺ Retry (fix deployed)</button>
+          <button class="btn btn-ghost" style="font-size:11px"
+            onclick="sendRecovery('${r.thread_id}','skip_to','pr_gate')">→ Skip to PR review</button>
+          <button class="btn btn-ghost" style="font-size:11px"
+            onclick="sendRecovery('${r.thread_id}','skip_to','research')">↩ Back to research</button>
+          <button class="btn btn-ghost" style="font-size:11px;color:var(--danger);border-color:var(--danger)"
+            onclick="sendRecovery('${r.thread_id}','cancel')">✕ Cancel</button>
+        </div>
+      </div>` : '';
+
     const gateSection = isWaiting ? `
       <div style="margin-top:12px;background:var(--gate-bg);border:1px solid rgba(217,119,6,.3);border-radius:6px;padding:12px">
         <div style="font-size:10px;font-weight:700;color:var(--gate);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
@@ -565,6 +585,7 @@ function renderRuns(c) {
         <span style="font-size:10px;color:${statusColor};font-weight:600">${statusIcon} ${r.status||'running'}</span>
       </div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${r.workflow||'cve_remediation'}</div>
+      ${recoverySection}
       ${gateSection}
     </div>`;
   }).join('');
@@ -581,10 +602,17 @@ function renderRuns(c) {
 async function submitGateDecision(threadId, workflowId, field, decision) {
   try {
     await api('POST', `/api/decision/${workflowId}/${threadId}`, {field, decision});
-    // Clear pending gate from local state
     if (S.runs[threadId]) S.runs[threadId].pending_gate = null;
     toast(`Decision sent: ${decision}`);
     setTimeout(() => { refreshRuns(); }, 1000);
+  } catch(e) { toast(e.message, false); }
+}
+
+async function sendRecovery(threadId, action, step='') {
+  try {
+    await api('POST', `/api/runs/${threadId}/recover`, {action, step});
+    toast(`Recovery sent: ${action}${step ? ' → '+step : ''}`);
+    setTimeout(() => { refreshRuns(); }, 1500);
   } catch(e) { toast(e.message, false); }
 }
 

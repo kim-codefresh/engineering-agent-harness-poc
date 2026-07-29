@@ -28,6 +28,17 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
 @dataclass
+class NotifyStuckInput:
+    thread_id: str
+    step_id: str
+    error: str
+    attempts: int
+    ticket_id: str
+    workflow_id: str
+    run_id: str
+
+
+@dataclass
 class NotifyFailureInput:
     thread_id: str
     workflow_id: str
@@ -57,6 +68,70 @@ class RunCodeStepInput:
     state: dict
     config: dict
     thread_id: str
+
+
+@activity.defn(name="notify_stuck")
+def notify_stuck(input: NotifyStuckInput) -> dict:
+    """Post Linear comment when a step is stuck after N failures, with recovery links."""
+    linear_api_key = os.getenv("LINEAR_API_KEY", "")
+    harness_url    = os.getenv("HARNESS_URL", "http://agent-harness.agent-harness.svc.cluster.local:8000")
+    temporal_ui    = os.getenv("TEMPORAL_UI_URL", "http://localhost:8088")
+
+    # Recovery links — hit the harness API which sends Temporal signals
+    base = f"{harness_url}/api/runs/{input.thread_id}/recover"
+    temporal_link = f"{temporal_ui}/namespaces/default/workflows/{input.workflow_id}/{input.run_id}/history"
+
+    body = (
+        f"⚠️ **Agent Harness — Stuck at step `{input.step_id}`**\n\n"
+        f"Failed **{input.attempts}** times and cannot recover automatically.\n\n"
+        f"**Error:** `{input.error}`\n\n"
+        f"**What would you like to do?**\n\n"
+        f"• **Retry** (a fix was deployed, try again):\n"
+        f"  `POST {base}` `{{\"action\":\"retry\"}}`\n\n"
+        f"• **Skip to PR review** (PR already open, go straight to human gate):\n"
+        f"  `POST {base}` `{{\"action\":\"skip_to\",\"step\":\"pr_gate\"}}`\n\n"
+        f"• **Go back to research** (agent tries a different approach):\n"
+        f"  `POST {base}` `{{\"action\":\"skip_to\",\"step\":\"research\"}}`\n\n"
+        f"• **Cancel this run**:\n"
+        f"  `POST {base}` `{{\"action\":\"cancel\"}}`\n\n"
+        f"👉 [View step history in Temporal]({temporal_link})\n\n"
+        f"*Workflow is paused and waiting for your decision.*"
+    )
+
+    if not linear_api_key:
+        activity.logger.warning("No LINEAR_API_KEY — cannot post stuck comment")
+        return {"ok": False}
+
+    try:
+        search = json.dumps({"query": "{ issues(first:20) { nodes { id identifier } } }"})
+        req = urllib.request.Request("https://api.linear.app/graphql",
+            data=search.encode(),
+            headers={"Authorization": linear_api_key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+        issue_id = None
+        for issue in data.get("data", {}).get("issues", {}).get("nodes", []):
+            if issue.get("identifier") == input.ticket_id:
+                issue_id = issue["id"]
+                break
+        if not issue_id:
+            return {"ok": False}
+
+        mutation = json.dumps({
+            "query": "mutation($issueId: String!, $body: String!) { commentCreate(input: {issueId: $issueId, body: $body}) { success } }",
+            "variables": {"issueId": issue_id, "body": body}
+        })
+        req2 = urllib.request.Request("https://api.linear.app/graphql",
+            data=mutation.encode(),
+            headers={"Authorization": linear_api_key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req2, timeout=5) as r:
+            result = json.loads(r.read())
+        success = result.get("data", {}).get("commentCreate", {}).get("success", False)
+        activity.logger.info(f"Posted stuck comment: {success}")
+        return {"ok": success}
+    except Exception as e:
+        activity.logger.warning(f"Failed to post stuck comment: {e}")
+        return {"ok": False}
 
 
 @activity.defn(name="notify_harness_failure")
